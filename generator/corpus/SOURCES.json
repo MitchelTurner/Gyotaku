@@ -1,162 +1,146 @@
 [
   {
-    "file": "01_fish_side.jpg",
+    "file": "01_fish.jpg",
+    "source": "01_pink-salmon.jpg",
     "size": [
-      1200,
-      900
-    ],
-    "expect": "ok"
+      1024,
+      683
+    ]
   },
   {
-    "file": "02_fish_held.jpg",
+    "file": "02_fish.jpg",
+    "source": "02_pxl_20260718_213558760.jpg",
     "size": [
-      1279,
-      853
-    ],
-    "expect": "ok"
+      1807,
+      2400
+    ]
   },
   {
-    "file": "03_fish_side_light.jpg",
+    "file": "03_fish.jpg",
+    "source": "03_screenshot_20260719-204445.jpg",
     "size": [
-      2550,
-      1006
-    ],
-    "expect": "ok"
+      1080,
+      2340
+    ]
   },
   {
-    "file": "04_fish_coho.jpg",
+    "file": "04_fish.jpg",
+    "source": "04_04_fish_coho.jpg",
     "size": [
       956,
       640
-    ],
-    "expect": "ok"
+    ]
   },
   {
-    "file": "05_fish_angled.jpg",
+    "file": "05_fish.jpg",
+    "source": "05_05_fish_angled.jpg",
     "size": [
       1137,
       640
-    ],
-    "expect": "ok"
+    ]
   },
   {
-    "file": "06_fish_chinook_fda.jpg",
+    "file": "06_fish.jpg",
+    "source": "06_02_fish_held.jpg",
     "size": [
-      1280,
-      960
-    ],
-    "expect": "ok"
+      1279,
+      853
+    ]
   },
   {
-    "file": "07_fish_chinook_specimen.jpg",
-    "size": [
-      2400,
-      1800
-    ],
-    "expect": "ok"
-  },
-  {
-    "file": "08_fish_chinook_forest.jpg",
+    "file": "07_fish.jpg",
+    "source": "07_03_fish_side_light.jpg",
     "size": [
       2400,
-      1800
-    ],
-    "expect": "ok"
+      946
+    ]
   },
   {
-    "file": "09_fish_coho_profile.jpg",
+    "file": "08_fish.jpg",
+    "source": "08_09_fish_coho_profile.jpg",
     "size": [
       2400,
       1210
-    ],
-    "expect": "ok"
+    ]
   },
   {
-    "file": "10_fish_coho_young.jpg",
+    "file": "09_fish.jpg",
+    "source": "09_15_fish_tagged.jpg",
     "size": [
-      2400,
-      1460
-    ],
-    "expect": "ok"
+      2250,
+      1006
+    ]
   },
   {
-    "file": "11_fish_sockeye_fda.jpg",
+    "file": "10_fish.jpg",
+    "source": "10_06_fish_chinook_fda.jpg",
     "size": [
       1280,
       960
-    ],
-    "expect": "ok"
+    ]
   },
   {
-    "file": "12_fish_sockeye_spawn.jpg",
+    "file": "11_fish.jpg",
+    "source": "11_11_fish_sockeye_fda.jpg",
     "size": [
-      2400,
-      1558
-    ],
-    "expect": "ok"
+      1280,
+      960
+    ]
   },
   {
-    "file": "13_fish_kokanee.jpg",
+    "file": "12_fish.jpg",
+    "source": "12_10_fish_coho_young.jpg",
     "size": [
-      2400,
-      1800
-    ],
-    "expect": "ok"
+      1368,
+      910
+    ]
   },
   {
-    "file": "14_fish_sockeye_side.jpg",
+    "file": "13_fish.jpg",
+    "source": "13_14_fish_sockeye_side.jpg",
     "size": [
       2400,
       1597
-    ],
-    "expect": "ok"
+    ]
   },
   {
-    "file": "15_fish_tagged.jpg",
+    "file": "14_fish.jpg",
+    "source": "14_16_fish_creek.jpg",
+    "size": [
+      2100,
+      1384
+    ]
+  },
+  {
+    "file": "15_fish.jpg",
+    "source": "15_13_fish_kokanee.jpg",
     "size": [
       2400,
       1800
-    ],
-    "expect": "ok"
+    ]
   },
   {
-    "file": "16_fish_creek.jpg",
+    "file": "16_fish.jpg",
+    "source": "16_12_fish_sockeye_spawn.jpg",
     "size": [
       2400,
-      1600
-    ],
-    "expect": "ok"
+      1558
+    ]
   },
   {
     "file": "17_bad_busy_bg.jpg",
-    "size": [
-      1600,
-      1200
-    ],
     "expect": "reject"
   },
   {
     "file": "18_bad_motion_blur.jpg",
-    "size": [
-      1280,
-      960
-    ],
     "expect": "reject"
   },
   {
     "file": "19_bad_low_light.jpg",
-    "size": [
-      1280,
-      960
-    ],
     "expect": "reject"
   },
   {
     "file": "20_bad_no_subject.jpg",
-    "size": [
-      1600,
-      1200
-    ],
     "expect": "reject"
   }
 ]
