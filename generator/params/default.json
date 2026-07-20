@@ -1,0 +1,11 @@
+{
+  "strategy": "flowfield",
+  "canvas": "A3",
+  "posterize_levels": 4,
+  "seed_count": 4200,
+  "jitter_amplitude": 0.14,
+  "dropout_threshold": 0.10,
+  "edge_pass_density": 0.28,
+  "max_stroke_length_px": 90.0,
+  "orientation_sigma": 5.0
+}
