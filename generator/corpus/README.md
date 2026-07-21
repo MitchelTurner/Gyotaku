@@ -1,14 +1,10 @@
-# Phase 0 test corpus — salmon fishing
+# Phase 0 corpus — salmon
 
-Twenty salmon/fish inputs for visual regression. Real user catches + Wikimedia Commons photos.
+Slots `01`–`16` are the best available salmon photos (user uploads preferred, size ≥600px short edge).
+Slots `17`–`20` are deliberate rejects.
+
+Many Google-thumbnail uploads were skipped (too small for the pipeline).
 
 ```bash
 gyotaku corpus
-# → corpus/runs/<timestamp>/contact_sheet.png
 ```
-
-- `01`–`05`: user uploads
-- `06`–`16`: Wikimedia Commons salmon (chinook, coho, sockeye/kokanee)
-- `17`–`20`: deliberately bad (should soft-reject)
-
-See `SOURCES.json` for filenames and sizes. Do **not** run `gyotaku make-corpus` — that regenerates synthetic placeholders and will wipe these.
