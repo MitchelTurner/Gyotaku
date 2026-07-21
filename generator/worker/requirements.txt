@@ -1,0 +1,4 @@
+# Worker extras (generator deps come from ../pyproject.toml)
+redis>=5.0
+psycopg[binary]>=3.1
+boto3>=1.34

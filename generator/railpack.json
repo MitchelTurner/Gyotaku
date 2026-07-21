@@ -2,6 +2,6 @@
   "$schema": "https://schema.railpack.com",
   "provider": "python",
   "deploy": {
-    "startCommand": "python app.py"
+    "startCommand": "python worker/worker.py"
   }
 }

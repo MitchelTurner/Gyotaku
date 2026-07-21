@@ -1,0 +1,53 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Upload {
+  id         String      @id @default(cuid())
+  sessionId  String
+  s3Key      String
+  imageHash  String      @default("")
+  width      Int         @default(0)
+  height     Int         @default(0)
+  createdAt  DateTime    @default(now())
+  renditions Rendition[]
+
+  @@index([sessionId])
+  @@index([imageHash])
+}
+
+model Rendition {
+  id             String          @id @default(cuid())
+  uploadId       String
+  upload         Upload          @relation(fields: [uploadId], references: [id])
+  seed           Int
+  styleParams    Json
+  status         RenditionStatus @default(QUEUED)
+  stage          String?
+  matteScore     Float?
+  svgKey         String?
+  previewKey     String?
+  printKey       String?
+  estPlotSeconds Int?
+  failureReason  String?
+  createdAt      DateTime        @default(now())
+  completedAt    DateTime?
+
+  @@index([uploadId])
+  @@index([status])
+  @@unique([uploadId, seed, styleFingerprint])
+  styleFingerprint String @default("")
+}
+
+enum RenditionStatus {
+  QUEUED
+  PROCESSING
+  READY
+  FAILED
+  REJECTED
+}

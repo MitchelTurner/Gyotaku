@@ -24,6 +24,11 @@ dependencies = [
 dev = [
   "pytest>=8.0",
 ]
+worker = [
+  "redis>=5.0",
+  "psycopg[binary]>=3.1",
+  "boto3>=1.34",
+]
 
 [project.scripts]
 gyotaku = "gyotaku.cli:main"

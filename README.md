@@ -2,19 +2,35 @@
 
 Upload a salmon photo → gyotaku-style pen-plotter artwork → order a hand-plotted original or giclée.
 
-**Current focus: Phase 0** — offline generator quality. See [`generator/README.md`](generator/README.md).
+**Current focus: Phase 1** — job queue + preview API around the Phase 0 generator.
+
+| Package | Role |
+|---|---|
+| [`generator/`](generator/README.md) | Offline CLI + Python queue worker |
+| [`api/`](api/README.md) | NestJS upload / rendition preview API |
 
 ```bash
+# Generator (Phase 0)
 cd generator && pip install -e ".[dev]"
 gyotaku generate corpus/images/01_fish.jpg -o /tmp/gyotaku-out
-gyotaku corpus
+
+# API + worker (Phase 1)
+docker compose up -d
+cd api && cp .env.example .env && npm install && npx prisma migrate deploy && npm run start:dev
+# other terminal:
+cd generator && pip install -e . && pip install -r worker/requirements.txt && python worker/worker.py
 ```
 
-Phases 1–3 (queue API, web UI, checkout) wait until corpus outputs are wall-worthy.
+Phases 2–3 (web UI, checkout, fulfillment) come after the preview API is solid.
 
 ### Railway
 
-Railpack needs a start command. Until Phase 1, the root service is a **health placeholder** (`app.py` + `railpack.json`) — not the product API. Local generation still runs from `generator/`.
+Deploy **two services** from this repo:
+
+1. **api** — root directory `api/` (`railpack.json` → NestJS)
+2. **worker** — root directory `generator/` (`railpack.json` → `python worker/worker.py`)
+
+Attach Postgres, Redis, and an S3-compatible bucket; set the env vars from `api/.env.example`.
 
 ---
 
@@ -34,9 +50,9 @@ Railpack needs a start command. Until Phase 1, the root service is a **health pl
 ### Behind the scenes
 
 ```
-Phone → website → API → job queue → Python generator → S3 (SVG + previews)
-                              ↓
-                         Postgres (order + seed)
+Phone → website → NestJS API → BullMQ/Redis ──> Python worker ──> S3
+                          │                         │
+                          └─────── Postgres ────────┘
 ```
 
 Every artwork stores its **seed + settings**, so a reprint or re-plot is identical.
@@ -49,4 +65,4 @@ Every artwork stores its **seed + settings**, so a reprint or re-plot is identic
 
 ### What “finished” really means
 
-Phase 0 quality first: the generator makes prints you’d hang. Then the website is just plumbing around that. The product people buy is the **line work**, not the app.
+Generator quality first (Phase 0). Phase 1 exposes it as a preview API. The product people buy is the **line work**, not the app.

@@ -1,8 +1,8 @@
-# Gyotaku Generator — Phase 0
+# Gyotaku Generator — Phase 0 / worker
 
 Offline CLI that turns a photo into gyotaku-style pen-plotter artwork: **SVG paths + preview PNG**.
 
-Phase 0 is the product. No web, no DB, no queue until the generator produces images worth hanging.
+Phase 1 adds a Redis queue worker in [`worker/`](worker/README.md) that runs the same pipeline for the NestJS API.
 
 ## Setup
 
