@@ -12,6 +12,10 @@ gyotaku corpus
 
 Phases 1–3 (queue API, web UI, checkout) wait until corpus outputs are wall-worthy.
 
+### Railway
+
+Railpack needs a start command. Until Phase 1, the root service is a **health placeholder** (`app.py` + `railpack.json`) — not the product API. Local generation still runs from `generator/`.
+
 ---
 
 ## How it works when finished
