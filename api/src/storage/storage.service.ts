@@ -30,10 +30,16 @@ export class StorageService {
         process.env.S3_PUBLIC_ENDPOINT ||
         ''
       ).replace(/\/$/, '') || null;
+    const isR2 = this.endpoint.includes('r2.cloudflarestorage.com');
+    const region = process.env.S3_REGION || (isR2 ? 'auto' : 'us-east-1');
+    const forcePathStyle =
+      process.env.S3_FORCE_PATH_STYLE !== undefined
+        ? process.env.S3_FORCE_PATH_STYLE === 'true'
+        : !isR2;
     this.client = new S3Client({
-      region: process.env.S3_REGION || 'us-east-1',
+      region,
       endpoint: this.endpoint || undefined,
-      forcePathStyle: (process.env.S3_FORCE_PATH_STYLE || 'true') === 'true',
+      forcePathStyle,
       credentials: {
         accessKeyId: process.env.S3_ACCESS_KEY_ID || 'minio',
         secretAccessKey: process.env.S3_SECRET_ACCESS_KEY || 'minio12345',

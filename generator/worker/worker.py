@@ -34,12 +34,19 @@ from gyotaku.pipeline import generate  # noqa: E402
 
 QUEUE_KEY = os.environ.get("GYOTAKU_JOB_QUEUE", "gyotaku:jobs")
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
-S3_ENDPOINT = os.environ.get("S3_ENDPOINT")
-S3_REGION = os.environ.get("S3_REGION", "us-east-1")
+S3_ENDPOINT = (os.environ.get("S3_ENDPOINT") or "").strip() or None
 S3_BUCKET = os.environ.get("S3_BUCKET", "gyotaku")
 S3_ACCESS_KEY_ID = os.environ.get("S3_ACCESS_KEY_ID", "minio")
 S3_SECRET_ACCESS_KEY = os.environ.get("S3_SECRET_ACCESS_KEY", "minio12345")
-S3_FORCE_PATH_STYLE = os.environ.get("S3_FORCE_PATH_STYLE", "true") == "true"
+_IS_R2 = bool(S3_ENDPOINT and "r2.cloudflarestorage.com" in S3_ENDPOINT)
+# R2 requires region "auto". Default path-style works for MinIO; R2 prefers virtual-hosted
+# unless S3_FORCE_PATH_STYLE is explicitly set.
+S3_REGION = os.environ.get("S3_REGION") or ("auto" if _IS_R2 else "us-east-1")
+if "S3_FORCE_PATH_STYLE" in os.environ:
+    S3_FORCE_PATH_STYLE = os.environ.get("S3_FORCE_PATH_STYLE", "true") == "true"
+else:
+    S3_FORCE_PATH_STYLE = not _IS_R2
+_DEFAULT_MINIO_CREDS = S3_ACCESS_KEY_ID == "minio" and S3_SECRET_ACCESS_KEY == "minio12345"
 
 LOCAL_REDIS_DEFAULT = "redis://localhost:6379"
 
@@ -142,6 +149,7 @@ def start_health_server() -> None:
                 self.send_response(404)
             else:
                 body = dict(HEALTH)
+                body["storage"] = s3_config_summary()
                 payload = json.dumps(body).encode("utf-8")
                 code = 200 if body.get("status") == "ok" else 503
                 self.send_response(code)
@@ -159,14 +167,39 @@ def start_health_server() -> None:
     log(f"health listening on 0.0.0.0:{port}")
 
 
+def s3_config_summary() -> dict[str, Any]:
+    return {
+        "bucket": S3_BUCKET,
+        "endpoint": S3_ENDPOINT,
+        "region": S3_REGION,
+        "forcePathStyle": S3_FORCE_PATH_STYLE,
+        "usingDefaultMinioCreds": _DEFAULT_MINIO_CREDS,
+        "isR2": _IS_R2,
+    }
+
+
+def assert_s3_configured() -> None:
+    if _DEFAULT_MINIO_CREDS and (os.environ.get("RAILWAY_ENVIRONMENT") or _IS_R2):
+        raise RuntimeError(
+            "Worker S3 credentials are still the MinIO defaults (minio/minio12345). "
+            "Copy the same S3_ENDPOINT / S3_BUCKET / S3_ACCESS_KEY_ID / "
+            "S3_SECRET_ACCESS_KEY / S3_REGION=auto from the API service onto the worker, "
+            "then redeploy."
+        )
+
+
 def s3_client():
+    assert_s3_configured()
     return boto3.client(
         "s3",
-        endpoint_url=S3_ENDPOINT or None,
+        endpoint_url=S3_ENDPOINT,
         region_name=S3_REGION,
         aws_access_key_id=S3_ACCESS_KEY_ID,
         aws_secret_access_key=S3_SECRET_ACCESS_KEY,
-        config=Config(s3={"addressing_style": "path" if S3_FORCE_PATH_STYLE else "auto"}),
+        config=Config(
+            signature_version="s3v4",
+            s3={"addressing_style": "path" if S3_FORCE_PATH_STYLE else "virtual"},
+        ),
     )
 
 
@@ -330,12 +363,31 @@ def main() -> None:
     except Exception:
         pass
 
-    log(f"starting; redis={safe_redis} queue={QUEUE_KEY} bucket={S3_BUCKET}")
+    log(
+        f"starting; redis={safe_redis} queue={QUEUE_KEY} "
+        f"s3={S3_ENDPOINT} bucket={S3_BUCKET} region={S3_REGION}"
+    )
     try:
         parsed = urlparse(DATABASE_URL)
         log(f"database host={parsed.hostname}")
     except Exception:
         pass
+
+    try:
+        assert_s3_configured()
+    except RuntimeError as e:
+        HEALTH.update(
+            {
+                "status": "misconfigured",
+                "message": str(e),
+                "missing": ["S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"],
+                "hint": str(e),
+                "storage": s3_config_summary(),
+            }
+        )
+        log(str(e))
+        while True:
+            time.sleep(60)
 
     HEALTH.update({"status": "connecting", "message": "connecting to redis", "missing": []})
     r = connect_redis(redis_url)
@@ -345,6 +397,7 @@ def main() -> None:
             "message": "Queue worker is up. Use the web service URL for the app UI.",
             "missing": [],
             "hint": None,
+            "storage": s3_config_summary(),
         }
     )
     log("redis ok; waiting for jobs")
