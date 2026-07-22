@@ -52,6 +52,9 @@ export function OrderStep({
         ])
         if (!cancelled) {
           setQuotes({ PLOTTED_ORIGINAL: plotted, GICLEE: giclee })
+          if (plotted.available === false) {
+            setProductType('GICLEE')
+          }
         }
       } catch (e) {
         if (!cancelled) {
@@ -141,8 +144,14 @@ export function OrderStep({
       <div className="grid gap-3 sm:grid-cols-2">
         <ProductCard
           active={productType === 'PLOTTED_ORIGINAL'}
+          disabled={quotes.PLOTTED_ORIGINAL?.available === false}
           title="Plotted original"
-          body="Drawn on an AxiDraw, signed and editioned (limited to 25). The physical ink path of your catch."
+          body={
+            quotes.PLOTTED_ORIGINAL?.available === false
+              ? quotes.PLOTTED_ORIGINAL.unavailableReason ||
+                'Temporarily closed — plot queue is full.'
+              : 'Drawn on an AxiDraw, signed and editioned (limited to 25). The physical ink path of your catch.'
+          }
           price={quotes.PLOTTED_ORIGINAL ? money(quotes.PLOTTED_ORIGINAL.amountCents) : '…'}
           onClick={() => setProductType('PLOTTED_ORIGINAL')}
         />
@@ -154,6 +163,13 @@ export function OrderStep({
           onClick={() => setProductType('GICLEE')}
         />
       </div>
+
+      {quotes.PLOTTED_ORIGINAL?.queueEtaDays != null &&
+        quotes.PLOTTED_ORIGINAL.available !== false && (
+          <p className="text-xs text-ink/40">
+            Plot queue ~{quotes.PLOTTED_ORIGINAL.queueEtaDays} days
+          </p>
+        )}
 
       <label className="block">
         <span className="mb-2 block text-[11px] uppercase tracking-[0.18em] text-ink/40">
@@ -172,15 +188,21 @@ export function OrderStep({
 
       <button
         type="button"
-        disabled={busy || !selected}
+        disabled={
+          busy ||
+          !selected ||
+          selected.available === false
+        }
         onClick={handleCheckout}
         className="w-full rounded-sm bg-sea px-5 py-3.5 text-sm font-medium text-foam transition hover:bg-sea-deep disabled:opacity-50"
       >
         {busy
           ? 'Redirecting to Stripe…'
-          : selected
-            ? `Pay ${money(selected.amountCents)}`
-            : 'Loading price…'}
+          : selected?.available === false
+            ? 'Unavailable'
+            : selected
+              ? `Pay ${money(selected.amountCents)}`
+              : 'Loading price…'}
       </button>
 
       <button
@@ -196,12 +218,14 @@ export function OrderStep({
 
 function ProductCard({
   active,
+  disabled,
   title,
   body,
   price,
   onClick,
 }: {
   active: boolean
+  disabled?: boolean
   title: string
   body: string
   price: string
@@ -210,11 +234,14 @@ function ProductCard({
   return (
     <button
       type="button"
+      disabled={disabled}
       onClick={onClick}
       className={
-        active
-          ? 'rounded-sm border border-ink bg-ink px-4 py-5 text-left text-foam'
-          : 'rounded-sm border border-ink/10 bg-foam/40 px-4 py-5 text-left text-ink transition hover:border-ink/25'
+        disabled
+          ? 'rounded-sm border border-ink/10 bg-ink/5 px-4 py-5 text-left text-ink/40'
+          : active
+            ? 'rounded-sm border border-ink bg-ink px-4 py-5 text-left text-foam'
+            : 'rounded-sm border border-ink/10 bg-foam/40 px-4 py-5 text-left text-ink transition hover:border-ink/25'
       }
     >
       <p className="font-display text-2xl">{title}</p>

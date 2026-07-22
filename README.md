@@ -75,9 +75,10 @@ Every artwork stores its **seed + settings**, so a reprint or re-plot is identic
 
 ### For the operator
 
-- A small **plot queue**: download SVG, see estimated plot time, mark plotting → packed → shipped, add tracking.
-- Originals stay limited; if the queue gets too long, that tier closes automatically.
-- Giclées go out through a print-on-demand path without touching each one.
+- Open **`/operator`** on the web app (token = `OPERATOR_TOKEN`): one-click SVG download, status chips, labels.
+- Originals stay limited; if plot-queue ETA exceeds `PLOTTED_QUEUE_MAX_DAYS`, that tier closes automatically.
+- Paid giclées enqueue a 300 DPI `printKey` for POD handoff.
+- Optional EasyPost/Shippo: **Buy label + ship** writes tracking and marks SHIPPED.
 
 ### What “finished” really means
 

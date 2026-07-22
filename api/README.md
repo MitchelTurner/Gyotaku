@@ -18,6 +18,11 @@ NestJS API: upload → enqueue generation → poll watermarked preview → Strip
 | `POST` | `/webhooks/stripe` | Stripe webhook (raw body) |
 | `GET` | `/operator/orders` | Fulfillment queue (`x-operator-token`) |
 | `PATCH` | `/operator/orders/:id` | Update fulfillment status |
+| `POST` | `/operator/orders/:id/label` | Buy EasyPost/Shippo label → tracking + SHIPPED |
+| `POST` | `/operator/orders/:id/print` | Queue 300 DPI `printKey` for giclée |
+| `GET` | `/orders/availability/plotted` | Queue ETA + whether plotted originals are open |
+
+Operator UI: open `/operator` on the web app and paste `OPERATOR_TOKEN`.
 
 Rate limits (per `sessionId`): **10 uploads/hour**, **30 renditions/hour**.
 

@@ -25,10 +25,14 @@ export class OrdersController {
     @Query('productType') productType: ProductType,
     @Query('fishLengthIn') fishLengthIn?: string,
   ) {
-    const length = fishLengthIn != null && fishLengthIn !== ''
-      ? Number(fishLengthIn)
-      : null;
+    const length =
+      fishLengthIn != null && fishLengthIn !== '' ? Number(fishLengthIn) : null;
     return this.orders.quote(productType, length);
+  }
+
+  @Get('orders/availability/plotted')
+  plottedAvailability() {
+    return this.orders.plottedAvailability();
   }
 
   @Post('orders/checkout')
@@ -86,6 +90,24 @@ export class OrdersController {
   ) {
     assertOperator(token);
     return this.orders.updateFulfillment(id, body);
+  }
+
+  @Post('operator/orders/:id/label')
+  createLabel(
+    @Headers('x-operator-token') token: string | undefined,
+    @Param('id') id: string,
+  ) {
+    assertOperator(token);
+    return this.orders.createLabel(id);
+  }
+
+  @Post('operator/orders/:id/print')
+  requestPrint(
+    @Headers('x-operator-token') token: string | undefined,
+    @Param('id') id: string,
+  ) {
+    assertOperator(token);
+    return this.orders.requestPrint(id);
   }
 }
 

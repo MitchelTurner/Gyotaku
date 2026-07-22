@@ -130,6 +130,9 @@ export type QuoteResponse = {
   amountCents: number
   currency: string
   label: string
+  available?: boolean
+  unavailableReason?: string | null
+  queueEtaDays?: number | null
 }
 
 export type CheckoutResponse = {

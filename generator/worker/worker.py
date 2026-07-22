@@ -232,6 +232,78 @@ def set_stage(conn, rendition_id: str, stage: str, status: str = "PROCESSING") -
 
 
 def process_job(job: dict[str, Any]) -> None:
+    job_type = (job.get("type") or "generate").lower()
+    if job_type == "print":
+        process_print_job(job)
+    else:
+        process_generate_job(job)
+
+
+def process_print_job(job: dict[str, Any]) -> None:
+    """Re-run pipeline with write_print=True and upload printKey for giclée POD."""
+    rendition_id = job["renditionId"]
+    s3_key = job["s3Key"]
+    seed = int(job.get("seed") or 0)
+    style_params = job.get("styleParams") or {}
+
+    s3 = s3_client()
+    conn = db_connect()
+    try:
+        # Skip if already present
+        with conn.cursor() as cur:
+            cur.execute('SELECT "printKey" FROM "Rendition" WHERE id = %s', (rendition_id,))
+            row = cur.fetchone()
+            if row and row[0]:
+                log(f"{rendition_id}: printKey already set — skip")
+                return
+
+        with tempfile.TemporaryDirectory(prefix="gyotaku-print-") as tmp:
+            tmp_path = Path(tmp)
+            src = tmp_path / "input.bin"
+            out_dir = tmp_path / "out"
+            out_dir.mkdir()
+
+            log(f"{rendition_id}: print download s3://{S3_BUCKET}/{s3_key}")
+            s3.download_file(S3_BUCKET, s3_key, str(src))
+            ext = Path(s3_key).suffix.lower() or ".jpg"
+            image_path = tmp_path / f"input{ext}"
+            src.rename(image_path)
+
+            params = resolve_params(
+                overrides=style_params if isinstance(style_params, dict) else {}
+            )
+            # Print raster must be clean (no watermark)
+            params = StyleParams.from_dict({**params.to_dict(), "watermark": False})
+
+            result = generate(
+                image_path,
+                out_dir,
+                params=params,
+                seed=seed,
+                write_print=True,
+                progress=lambda stage, detail="": log(f"{rendition_id}: print [{stage}] {detail}"),
+            )
+            if result.rejected or not result.print_path or not result.print_path.exists():
+                log(f"{rendition_id}: print generation failed / rejected")
+                return
+
+            print_key = f"renditions/{rendition_id}/print.png"
+            s3.upload_file(
+                str(result.print_path),
+                S3_BUCKET,
+                print_key,
+                ExtraArgs={"ContentType": "image/png"},
+            )
+            update_rendition(conn, rendition_id, {"printKey": print_key})
+            log(f"{rendition_id}: printKey ready")
+    except Exception as e:
+        log(f"{rendition_id}: print FAILED {e}")
+        traceback.print_exc()
+    finally:
+        conn.close()
+
+
+def process_generate_job(job: dict[str, Any]) -> None:
     rendition_id = job["renditionId"]
     s3_key = job["s3Key"]
     seed = int(job.get("seed") or 0)
@@ -422,7 +494,10 @@ def main() -> None:
                 continue
             _, raw = item
             job = json.loads(raw)
-            log(f"job received renditionId={job.get('renditionId')}")
+            log(
+                f"job received type={job.get('type') or 'generate'} "
+                f"renditionId={job.get('renditionId')}"
+            )
             process_job(job)
         except KeyboardInterrupt:
             log("shutdown")

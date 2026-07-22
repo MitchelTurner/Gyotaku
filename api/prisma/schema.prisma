@@ -80,6 +80,10 @@ model Order {
   shippingPostal        String?
   shippingCountry       String?
   trackingNumber        String?
+  /// Label PDF/PNG URL from EasyPost or Shippo (presigned or provider CDN)
+  shippingLabelUrl      String?
+  shippingCarrier       String?
+  shippingService       String?
   stripeCheckoutSession String?        @unique
   stripePaymentIntent   String?
   paidAt                DateTime?

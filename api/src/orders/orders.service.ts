@@ -3,14 +3,23 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  OnModuleDestroy,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { OrderStatus, ProductType } from '@prisma/client';
+import Redis from 'ioredis';
 import Stripe from 'stripe';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { CreateCheckoutDto, UpdateFulfillmentDto } from './dto';
+import { PYTHON_JOB_QUEUE, type PrintJobPayload } from './print-jobs';
 import { priceCents, productLabel } from './pricing';
+import { isPlottedQueueOpen } from './queue-eta';
+import {
+  purchaseShippingLabel,
+  ShippingAddressError,
+  ShippingNotConfiguredError,
+} from './shipping';
 
 const PAID_STATUSES: OrderStatus[] = [
   'PAID',
@@ -21,8 +30,9 @@ const PAID_STATUSES: OrderStatus[] = [
 ];
 
 @Injectable()
-export class OrdersService {
+export class OrdersService implements OnModuleDestroy {
   private readonly stripe: Stripe | null;
+  private readonly redis: Redis;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -30,6 +40,13 @@ export class OrdersService {
   ) {
     const key = process.env.STRIPE_SECRET_KEY;
     this.stripe = key ? new Stripe(key) : null;
+    this.redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
+      maxRetriesPerRequest: null,
+    });
+  }
+
+  async onModuleDestroy() {
+    await this.redis.quit();
   }
 
   private requireStripe(): Stripe {
@@ -41,14 +58,51 @@ export class OrdersService {
     return this.stripe;
   }
 
+  async plottedAvailability() {
+    const [queueOrders, counter] = await Promise.all([
+      this.prisma.order.findMany({
+        where: {
+          productType: 'PLOTTED_ORIGINAL',
+          status: { in: ['PAID', 'PLOTTING', 'PACKED'] },
+        },
+        include: { rendition: { select: { estPlotSeconds: true } } },
+      }),
+      this.prisma.editionCounter.findUnique({ where: { id: 'plotted_original' } }),
+    ]);
+
+    const open = isPlottedQueueOpen(
+      queueOrders.map((o) => ({
+        status: o.status,
+        estPlotSeconds: o.rendition.estPlotSeconds,
+      })),
+      counter?.next,
+      counter?.size,
+    );
+
+    return {
+      productType: 'PLOTTED_ORIGINAL' as const,
+      open: open.open,
+      reason: open.reason,
+      queueEtaDays: open.queueEtaDays,
+      maxDays: open.maxDays,
+      editionNext: counter?.next ?? 1,
+      editionSize: counter?.size ?? 25,
+    };
+  }
+
   async quote(productType: ProductType, fishLengthIn?: number | null) {
     const amountCents = priceCents(productType, fishLengthIn);
+    const availability =
+      productType === 'PLOTTED_ORIGINAL' ? await this.plottedAvailability() : null;
     return {
       productType,
       fishLengthIn: fishLengthIn ?? null,
       amountCents,
       currency: 'usd',
       label: productLabel(productType),
+      available: availability ? availability.open : true,
+      unavailableReason: availability?.reason ?? null,
+      queueEtaDays: availability?.queueEtaDays ?? null,
     };
   }
 
@@ -73,6 +127,15 @@ export class OrdersService {
     }
     if (!rendition.svgKey) {
       throw new BadRequestException('Rendition has no SVG artifact');
+    }
+
+    if (dto.productType === 'PLOTTED_ORIGINAL') {
+      const avail = await this.plottedAvailability();
+      if (!avail.open) {
+        throw new BadRequestException(
+          avail.reason || 'Plotted originals are temporarily unavailable',
+        );
+      }
     }
 
     const style = (rendition.styleParams || {}) as Record<string, unknown>;
@@ -155,10 +218,6 @@ export class OrdersService {
     return this.toPublic(order);
   }
 
-  /**
-   * Paid unlock: clean (unwatermarked) preview + SVG download.
-   * Requires matching sessionId and a paid/fulfillment status.
-   */
   async getArtifacts(orderId: string, sessionId: string) {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
@@ -231,10 +290,10 @@ export class OrdersService {
     const shipping = shippingDetails?.address;
     const name = shippingDetails?.name || session.customer_details?.name;
 
-    await this.prisma.$transaction(async (tx) => {
+    const paid = await this.prisma.$transaction(async (tx) => {
       const order = await tx.order.findUnique({ where: { id: orderId } });
-      if (!order) return;
-      if (!['DRAFT', 'AWAITING_PAYMENT'].includes(order.status)) return;
+      if (!order) return null;
+      if (!['DRAFT', 'AWAITING_PAYMENT'].includes(order.status)) return null;
 
       let editionNumber: number | undefined;
       let editionSize: number | undefined;
@@ -245,7 +304,6 @@ export class OrdersService {
           create: { id: 'plotted_original', next: 1, size: 25 },
           update: {},
         });
-        // Atomic claim: RETURNING next is post-increment, so edition = next - 1
         const claimed = await tx.editionCounter.update({
           where: { id: 'plotted_original' },
           data: { next: { increment: 1 } },
@@ -254,7 +312,7 @@ export class OrdersService {
         editionSize = claimed.size;
       }
 
-      await tx.order.update({
+      return tx.order.update({
         where: { id: orderId },
         data: {
           status: 'PAID',
@@ -277,22 +335,42 @@ export class OrdersService {
           editionNumber,
           editionSize,
         },
+        include: { rendition: { include: { upload: true } } },
       });
     });
+
+    if (paid?.productType === 'GICLEE') {
+      await this.enqueuePrintJob(paid.rendition);
+    }
   }
 
-  /** Operator plot / fulfillment queue */
+  /** Queue 300 DPI print.png generation for POD / giclée handoff. */
+  private async enqueuePrintJob(rendition: {
+    id: string;
+    printKey: string | null;
+    seed: number;
+    styleParams: unknown;
+    upload: { id: string; s3Key: string; imageHash: string };
+  }) {
+    if (rendition.printKey) return;
+    const payload: PrintJobPayload = {
+      type: 'print',
+      renditionId: rendition.id,
+      uploadId: rendition.upload.id,
+      s3Key: rendition.upload.s3Key,
+      styleParams: (rendition.styleParams || {}) as Record<string, unknown>,
+      seed: rendition.seed,
+      imageHash: rendition.upload.imageHash,
+    };
+    await this.redis.lpush(PYTHON_JOB_QUEUE, JSON.stringify(payload));
+  }
+
   async listFulfillment(status?: OrderStatus) {
     const where = status
       ? { status }
       : {
           status: {
-            in: [
-              'PAID',
-              'PLOTTING',
-              'PRINTING',
-              'PACKED',
-            ] as OrderStatus[],
+            in: ['PAID', 'PLOTTING', 'PRINTING', 'PACKED'] as OrderStatus[],
           },
         };
 
@@ -303,7 +381,9 @@ export class OrdersService {
       take: 100,
     });
 
-    return Promise.all(orders.map((o) => this.toOperator(o)));
+    const availability = await this.plottedAvailability();
+    const items = await Promise.all(orders.map((o) => this.toOperator(o)));
+    return { availability, orders: items };
   }
 
   async updateFulfillment(orderId: string, dto: UpdateFulfillmentDto) {
@@ -320,6 +400,80 @@ export class OrdersService {
       include: { rendition: true },
     });
     return this.toOperator(updated);
+  }
+
+  /**
+   * Buy a shipping label via EasyPost/Shippo, write tracking, mark SHIPPED.
+   * Safe to call from PACKED (preferred) or PAID/PLOTTING/PRINTING.
+   */
+  async createLabel(orderId: string) {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: { rendition: true },
+    });
+    if (!order) throw new NotFoundException('Order not found');
+    if (['CANCELLED', 'REFUNDED'].includes(order.status)) {
+      throw new BadRequestException('Order is cancelled');
+    }
+    if (order.shippingLabelUrl && order.trackingNumber) {
+      return this.toOperator(order);
+    }
+
+    try {
+      const label = await purchaseShippingLabel({
+        name: order.shippingName,
+        line1: order.shippingLine1,
+        line2: order.shippingLine2,
+        city: order.shippingCity,
+        state: order.shippingState,
+        postal: order.shippingPostal,
+        country: order.shippingCountry,
+        email: order.email,
+      });
+
+      const updated = await this.prisma.order.update({
+        where: { id: orderId },
+        data: {
+          trackingNumber: label.trackingNumber,
+          shippingLabelUrl: label.labelUrl,
+          shippingCarrier: label.carrier,
+          shippingService: label.service,
+          status: 'SHIPPED',
+          fulfillmentNote:
+            order.fulfillmentNote ||
+            `Label via ${label.provider} (${label.carrier} ${label.service})`,
+        },
+        include: { rendition: true },
+      });
+      return this.toOperator(updated);
+    } catch (err) {
+      if (err instanceof ShippingNotConfiguredError) {
+        throw new ServiceUnavailableException(err.message);
+      }
+      if (err instanceof ShippingAddressError) {
+        throw new BadRequestException(err.message);
+      }
+      throw new BadRequestException(
+        err instanceof Error ? err.message : 'Label purchase failed',
+      );
+    }
+  }
+
+  /** Re-queue print generation if a giclée is missing printKey. */
+  async requestPrint(orderId: string) {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: { rendition: { include: { upload: true } } },
+    });
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.productType !== 'GICLEE') {
+      throw new BadRequestException('Print raster is only for giclée orders');
+    }
+    if (order.rendition.printKey) {
+      return this.toOperator(order);
+    }
+    await this.enqueuePrintJob(order.rendition);
+    return this.toOperator(order);
   }
 
   private async toPublic(order: {
@@ -377,7 +531,6 @@ export class OrdersService {
       paperWidthMm: order.rendition?.paperWidthMm ?? null,
       paperHeightMm: order.rendition?.paperHeightMm ?? null,
       paid,
-      // Locked recipe so the buyer can reorder the same print (other product type)
       reorder: order.rendition
         ? {
             renditionId: order.renditionId,
@@ -409,6 +562,9 @@ export class OrdersService {
     shippingPostal: string | null;
     shippingCountry: string | null;
     trackingNumber: string | null;
+    shippingLabelUrl?: string | null;
+    shippingCarrier?: string | null;
+    shippingService?: string | null;
     fulfillmentNote: string | null;
     paidAt: Date | null;
     createdAt: Date;
@@ -458,6 +614,9 @@ export class OrdersService {
         country: order.shippingCountry,
       },
       trackingNumber: order.trackingNumber,
+      shippingLabelUrl: order.shippingLabelUrl ?? null,
+      shippingCarrier: order.shippingCarrier ?? null,
+      shippingService: order.shippingService ?? null,
       fulfillmentNote: order.fulfillmentNote,
       paidAt: order.paidAt,
       createdAt: order.createdAt,
@@ -471,6 +630,7 @@ export class OrdersService {
       previewUrl,
       previewCleanUrl,
       printUrl,
+      hasPrint: Boolean(order.rendition.printKey),
     };
   }
 }
