@@ -1,2 +1,13 @@
-# Railpack / Railway install entrypoint for the generator + worker service.
--e .
+# Flat deps for Railpack/pip (worker also adds generator/ to PYTHONPATH).
+numpy>=1.26
+opencv-python-headless>=4.9
+Pillow>=10.2
+pillow-heif>=0.15
+rembg>=2.0
+onnxruntime>=1.17
+scipy>=1.12
+click>=8.1
+tqdm>=4.66
+redis>=5.0
+psycopg[binary]>=3.1
+boto3>=1.34

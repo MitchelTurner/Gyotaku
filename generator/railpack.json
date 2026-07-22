@@ -1,10 +1,8 @@
 {
   "$schema": "https://schema.railpack.com",
   "provider": "python",
-  "steps": {
-    "install": {
-      "commands": ["pip install -e ."]
-    }
+  "packages": {
+    "python": "3.12"
   },
   "deploy": {
     "startCommand": "python worker/worker.py"
