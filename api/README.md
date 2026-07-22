@@ -7,7 +7,8 @@ NestJS preview API: upload → enqueue generation → poll watermarked preview.
 | Method | Route | Purpose |
 |---|---|---|
 | `GET` | `/health` | Liveness |
-| `POST` | `/uploads/presign` | Presigned S3 PUT + upload record |
+| `POST` | `/uploads/presign` | Create upload record (returns API upload path) |
+| `PUT` | `/uploads/:id/content` | Browser uploads bytes; API writes to S3 |
 | `POST` | `/uploads/:id/complete` | Confirm upload, hash + dimensions |
 | `POST` | `/renditions` | Enqueue generation |
 | `GET` | `/renditions/:id` | Poll status / preview URL |

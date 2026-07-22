@@ -1,4 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import {
+  Injectable,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import {
   GetObjectCommand,
   HeadObjectCommand,
@@ -13,21 +16,23 @@ export class StorageService {
   private readonly client: S3Client;
   readonly bucket: string;
   private readonly publicUrl: string;
+  private readonly endpoint: string;
   /** Host the browser must reach (rewrites localhost/internal signed URLs). */
   private readonly browserEndpoint: string | null;
 
   constructor() {
     this.bucket = process.env.S3_BUCKET || 'gyotaku';
     this.publicUrl = (process.env.S3_PUBLIC_URL || '').replace(/\/$/, '');
-    const endpoint = process.env.S3_ENDPOINT;
-    this.browserEndpoint = (
-      process.env.S3_BROWSER_ENDPOINT ||
-      process.env.S3_PUBLIC_ENDPOINT ||
-      ''
-    ).replace(/\/$/, '') || null;
+    this.endpoint = process.env.S3_ENDPOINT || '';
+    this.browserEndpoint =
+      (
+        process.env.S3_BROWSER_ENDPOINT ||
+        process.env.S3_PUBLIC_ENDPOINT ||
+        ''
+      ).replace(/\/$/, '') || null;
     this.client = new S3Client({
       region: process.env.S3_REGION || 'us-east-1',
-      endpoint: endpoint || undefined,
+      endpoint: this.endpoint || undefined,
       forcePathStyle: (process.env.S3_FORCE_PATH_STYLE || 'true') === 'true',
       credentials: {
         accessKeyId: process.env.S3_ACCESS_KEY_ID || 'minio',
@@ -35,11 +40,28 @@ export class StorageService {
       },
     });
 
-    if (endpoint && /localhost|127\.0\.0\.1/.test(endpoint)) {
+    if (this.isLocalEndpoint()) {
       // eslint-disable-next-line no-console
       console.warn(
-        `[storage] S3_ENDPOINT=${endpoint} — browsers cannot upload to localhost. ` +
-          `Set a public S3/R2/MinIO endpoint (and optional S3_BROWSER_ENDPOINT).`,
+        `[storage] S3_ENDPOINT=${this.endpoint || '(default aws)'} looks local. ` +
+          `On Railway, set S3_* to a real bucket (R2/S3/MinIO).`,
+      );
+    }
+  }
+
+  isLocalEndpoint(): boolean {
+    if (!this.endpoint) return false;
+    return /localhost|127\.0\.0\.1/.test(this.endpoint);
+  }
+
+  /** Fail early with a browser-visible message when storage can't work on Railway. */
+  assertReachableFromServer(): void {
+    if (this.isLocalEndpoint() && process.env.RAILWAY_ENVIRONMENT) {
+      throw new ServiceUnavailableException(
+        'Storage misconfigured: S3_ENDPOINT points to localhost. ' +
+          'On the API (and worker) set S3_ENDPOINT / S3_BUCKET / S3_ACCESS_KEY_ID / ' +
+          'S3_SECRET_ACCESS_KEY to a real public or Railway-private bucket ' +
+          '(Cloudflare R2, AWS S3, or MinIO).',
       );
     }
   }
@@ -58,7 +80,20 @@ export class StorageService {
     }
   }
 
+  async putObject(key: string, body: Buffer, contentType: string) {
+    this.assertReachableFromServer();
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: body,
+        ContentType: contentType,
+      }),
+    );
+  }
+
   async presignPut(key: string, contentType: string, expiresIn = 900) {
+    this.assertReachableFromServer();
     const command = new PutObjectCommand({
       Bucket: this.bucket,
       Key: key,
@@ -69,6 +104,7 @@ export class StorageService {
   }
 
   async presignGet(key: string, expiresIn = 3600) {
+    this.assertReachableFromServer();
     const command = new GetObjectCommand({
       Bucket: this.bucket,
       Key: key,
@@ -78,12 +114,14 @@ export class StorageService {
   }
 
   async head(key: string) {
+    this.assertReachableFromServer();
     return this.client.send(
       new HeadObjectCommand({ Bucket: this.bucket, Key: key }),
     );
   }
 
   async getObjectBuffer(key: string): Promise<Buffer> {
+    this.assertReachableFromServer();
     const res = await this.client.send(
       new GetObjectCommand({ Bucket: this.bucket, Key: key }),
     );
@@ -96,13 +134,23 @@ export class StorageService {
       }
       return Buffer.concat(chunks);
     }
-    // SDK v3 may return a web ReadableStream / Uint8Array in some runtimes
-    const bytes = await (body as { transformToByteArray: () => Promise<Uint8Array> }).transformToByteArray();
+    const bytes = await (
+      body as { transformToByteArray: () => Promise<Uint8Array> }
+    ).transformToByteArray();
     return Buffer.from(bytes);
   }
 
   publicUrlFor(key: string): string | null {
     if (!this.publicUrl) return null;
     return `${this.publicUrl}/${key}`;
+  }
+
+  configSummary() {
+    return {
+      bucket: this.bucket,
+      endpoint: this.endpoint || null,
+      localEndpoint: this.isLocalEndpoint(),
+      browserEndpoint: this.browserEndpoint,
+    };
   }
 }

@@ -42,7 +42,9 @@ If the Redis service is named something other than `Redis`, the reference uses t
 
 On **web**, set `VITE_API_URL=https://gyotaku.up.railway.app` (or your API domain; no trailing slash) at **build** time. On **api**, set `CORS_ORIGINS` to the web origin (or leave empty while bringing up).
 
-**Storage (required for uploads):** the API returns a presigned PUT URL the browser calls directly. `S3_ENDPOINT=http://localhost:9000` causes **Failed to fetch**. Point `S3_*` at a real public bucket (S3 / R2 / public MinIO) on both **api** and **worker**.
+**Storage (required for uploads):** the browser uploads to the **API** (`PUT /uploads/:id/content`); the API writes to S3. `S3_ENDPOINT=http://localhost:9000` still breaks production — point `S3_*` on **api** and **worker** at a real bucket (Cloudflare R2, AWS S3, or MinIO on Railway). Health shows `"storage":{"localEndpoint":true}` when misconfigured.
+
+Also clear `CORS_ORIGINS` on the API (or set it to your web URL). A leftover `http://localhost:5173` blocks the browser.
 
 ---
 

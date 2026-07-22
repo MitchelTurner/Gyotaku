@@ -9,8 +9,8 @@ async function bootstrap() {
     .map((s) => s.trim())
     .filter(Boolean);
 
-  // Reflect request Origin when unset; otherwise allow listed origins.
-  // A stale CORS_ORIGINS=http://localhost:5173 on Railway causes browser "Failed to fetch".
+  // Reflect the request Origin by default so the web service can call the API.
+  // If CORS_ORIGINS is set, only those origins are allowed.
   app.enableCors({
     origin: origins.length
       ? (
@@ -18,11 +18,13 @@ async function bootstrap() {
           cb: (err: Error | null, allow?: boolean | string) => void,
         ) => {
           if (!origin) return cb(null, true);
-          if (origins.includes(origin) || origins.includes('*')) {
+          if (origins.includes('*') || origins.includes(origin)) {
             return cb(null, origin);
           }
           // eslint-disable-next-line no-console
-          console.warn(`[cors] blocked origin ${origin}; allowed=${origins.join(',')}`);
+          console.warn(
+            `[cors] blocked origin ${origin}; allowed=${origins.join(',')}`,
+          );
           return cb(null, false);
         }
       : true,

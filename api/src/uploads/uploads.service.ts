@@ -32,6 +32,8 @@ export class UploadsService {
         `Unsupported content type: ${dto.contentType}`,
       );
     }
+    // Surface misconfigured localhost MinIO before the browser tries to upload.
+    this.storage.assertReachableFromServer();
     await this.sessions.assertUploadAllowance(dto.sessionId);
 
     const ext = extensionFor(dto.contentType, dto.filename);
@@ -47,13 +49,34 @@ export class UploadsService {
       data: { s3Key: key },
     });
 
-    const uploadUrl = await this.storage.presignPut(key, dto.contentType);
+    // Prefer API-proxied upload so the browser never talks to S3/MinIO directly.
+    // uploadUrl kept for backwards compatibility / optional direct PUT.
+    const uploadUrl = `/uploads/${upload.id}/content`;
     return {
       uploadId: upload.id,
       uploadUrl,
       s3Key: key,
       expiresInSeconds: 900,
+      uploadMode: 'api' as const,
     };
+  }
+
+  async putContent(uploadId: string, body: Buffer, contentType: string) {
+    const upload = await this.prisma.upload.findUnique({
+      where: { id: uploadId },
+    });
+    if (!upload) throw new NotFoundException('Upload not found');
+    if (!upload.s3Key || upload.s3Key === 'pending') {
+      throw new BadRequestException('Upload has no storage key — call presign first');
+    }
+    if (body.length === 0) {
+      throw new BadRequestException('Empty upload body');
+    }
+    if (body.length > 25 * 1024 * 1024) {
+      throw new BadRequestException('Image exceeds 25 MB limit');
+    }
+    await this.storage.putObject(upload.s3Key, body, contentType);
+    return { ok: true, uploadId, bytes: body.length };
   }
 
   async complete(uploadId: string, sessionId?: string) {

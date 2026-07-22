@@ -1,13 +1,27 @@
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') || '/api'
 
+function friendlyFetchError(err: unknown, what: string): Error {
+  if (err instanceof TypeError) {
+    return new Error(
+      `${what} failed to fetch — check VITE_API_URL points at the API, CORS_ORIGINS allows this site, and the API is online.`,
+    )
+  }
+  return err instanceof Error ? err : new Error(String(err))
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers || {}),
-    },
-  })
+  let res: Response
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(init?.headers || {}),
+      },
+    })
+  } catch (err) {
+    throw friendlyFetchError(err, path)
+  }
   if (!res.ok) {
     let message = res.statusText
     try {
@@ -27,6 +41,7 @@ export type PresignResponse = {
   uploadUrl: string
   s3Key: string
   expiresInSeconds: number
+  uploadMode?: 'api' | 's3'
 }
 
 export type CompleteResponse = {
@@ -89,17 +104,42 @@ export function getRendition(id: string) {
   return request<RenditionResponse>(`/renditions/${id}`)
 }
 
-export async function putToPresignedUrl(
+/** Upload bytes via the API proxy (preferred) or a direct presigned S3 URL. */
+export async function putUploadBytes(
+  uploadId: string,
   uploadUrl: string,
   blob: Blob,
   contentType: string,
 ) {
-  const res = await fetch(uploadUrl, {
-    method: 'PUT',
-    headers: { 'Content-Type': contentType },
-    body: blob,
-  })
+  const viaApi =
+    uploadUrl.startsWith('/') ||
+    (uploadUrl.includes('/uploads/') && uploadUrl.endsWith('/content')) ||
+    uploadUrl.includes('localhost') ||
+    uploadUrl.includes('127.0.0.1')
+
+  const url = viaApi
+    ? `${API_BASE}/uploads/${uploadId}/content`
+    : uploadUrl
+
+  let res: Response
+  try {
+    res = await fetch(url, {
+      method: 'PUT',
+      headers: { 'Content-Type': contentType },
+      body: blob,
+    })
+  } catch (err) {
+    throw friendlyFetchError(err, 'upload')
+  }
   if (!res.ok) {
-    throw new Error(`Upload to storage failed (${res.status})`)
+    let message = `Upload failed (${res.status})`
+    try {
+      const body = await res.json()
+      message = body.message || body.error || message
+      if (Array.isArray(message)) message = message.join(', ')
+    } catch {
+      /* ignore */
+    }
+    throw new Error(typeof message === 'string' ? message : 'Upload failed')
   }
 }

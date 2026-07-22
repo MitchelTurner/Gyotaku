@@ -8,7 +8,7 @@ import {
   createRendition,
   getRendition,
   presignUpload,
-  putToPresignedUrl,
+  putUploadBytes,
   type RenditionResponse,
 } from './lib/api'
 import { prepareUploadFile } from './lib/image'
@@ -172,7 +172,8 @@ export default function App() {
         contentType: prepared.contentType,
         contentLength: prepared.blob.size,
       })
-      await putToPresignedUrl(
+      await putUploadBytes(
+        presign.uploadId,
         presign.uploadUrl,
         prepared.blob,
         prepared.contentType,
