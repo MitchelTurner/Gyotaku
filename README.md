@@ -40,7 +40,9 @@ If you only have a generator/worker service, add a new service from the same rep
 
 If the Redis service is named something other than `Redis`, the reference uses that name (Railway shows it in the picker). Worker `/health` returns `503` with `"missing":["REDIS_URL"]` until this is set.
 
-On **web**, set `VITE_API_URL=https://<your-api-service>.up.railway.app` (no trailing slash) before/at build. On **api**, set `CORS_ORIGINS` to the web origin.
+On **web**, set `VITE_API_URL=https://gyotaku.up.railway.app` (or your API domain; no trailing slash) at **build** time. On **api**, set `CORS_ORIGINS` to the web origin (or leave empty while bringing up).
+
+**Storage (required for uploads):** the API returns a presigned PUT URL the browser calls directly. `S3_ENDPOINT=http://localhost:9000` causes **Failed to fetch**. Point `S3_*` at a real public bucket (S3 / R2 / public MinIO) on both **api** and **worker**.
 
 ---
 
