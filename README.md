@@ -21,15 +21,13 @@ Phase 3 (checkout, fulfillment) comes next.
 
 ### Railway
 
-Deploy **three services**:
+Deploy **three services** (not one):
 
-1. **web** — root directory `web/` (set `VITE_API_URL` to the API origin at **build** time). This is the public app URL.
-2. **api** — root directory `api/` (public or private; web calls it via `VITE_API_URL`)
-3. **worker** — root directory `generator/` (can be private; only needs Redis/Postgres/S3)
+1. **web** — root directory `web/` — **this is the live site**
+2. **api** — root directory `api/`
+3. **worker** — root directory `generator/` (JSON health only — not the UI)
 
-Attach Postgres, Redis, and an S3-compatible bucket; set the env vars from `api/.env.example`.
-
-**Open the web service URL** for the UI. The worker URL only returns a JSON health check — it is not the app.
+If you only have a generator/worker service, add a new service from the same repo with **Root Directory = `web`**, enable a public domain, set build-time `VITE_API_URL` to your API origin, and deploy. Opening the worker URL will never show the React app.
 
 **Worker Variables are separate from the API** — linking Redis to the project is not enough; each service needs its own references:
 

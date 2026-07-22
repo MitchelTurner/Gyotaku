@@ -13,7 +13,16 @@ npm run dev
 
 Vite proxies `/api` → `http://localhost:3000`.
 
-Set `VITE_API_URL` for production (absolute API origin).
+## Railway (live site)
+
+Create a **separate** service (not the worker):
+
+1. New service → same GitHub repo
+2. **Root Directory** = `web`
+3. Variables (available at **build** time): `VITE_API_URL=https://<your-api>.up.railway.app`
+4. Deploy → open **this** service’s public URL
+
+The worker URL (`{"service":"gyotaku-worker",...}`) is not the frontend.
 
 ## Flow
 

@@ -1,7 +1,4 @@
 {
   "$schema": "https://schema.railpack.com",
-  "provider": "node",
-  "deploy": {
-    "startCommand": "node server.mjs"
-  }
+  "provider": "node"
 }
