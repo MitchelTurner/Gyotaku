@@ -31,7 +31,6 @@ from gyotaku.params import StyleParams, resolve_params  # noqa: E402
 from gyotaku.pipeline import generate  # noqa: E402
 
 QUEUE_KEY = os.environ.get("GYOTAKU_JOB_QUEUE", "gyotaku:jobs")
-REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 S3_ENDPOINT = os.environ.get("S3_ENDPOINT")
 S3_REGION = os.environ.get("S3_REGION", "us-east-1")
@@ -40,9 +39,50 @@ S3_ACCESS_KEY_ID = os.environ.get("S3_ACCESS_KEY_ID", "minio")
 S3_SECRET_ACCESS_KEY = os.environ.get("S3_SECRET_ACCESS_KEY", "minio12345")
 S3_FORCE_PATH_STYLE = os.environ.get("S3_FORCE_PATH_STYLE", "true") == "true"
 
+LOCAL_REDIS_DEFAULT = "redis://localhost:6379"
+
 
 def log(msg: str) -> None:
     print(f"[worker] {msg}", flush=True)
+
+
+def resolve_redis_url() -> str:
+    """Prefer REDIS_URL; accept Railway Redis plugin aliases."""
+    for key in ("REDIS_URL", "REDIS_PRIVATE_URL", "REDIS_PUBLIC_URL"):
+        value = os.environ.get(key, "").strip()
+        if value:
+            return value
+
+    host = os.environ.get("REDISHOST") or os.environ.get("REDIS_HOST")
+    port = os.environ.get("REDISPORT") or os.environ.get("REDIS_PORT") or "6379"
+    password = os.environ.get("REDISPASSWORD") or os.environ.get("REDIS_PASSWORD")
+    user = os.environ.get("REDISUSER") or os.environ.get("REDIS_USER") or "default"
+    if host:
+        if password:
+            return f"redis://{user}:{password}@{host}:{port}"
+        return f"redis://{host}:{port}"
+
+    if os.environ.get("RAILWAY_ENVIRONMENT"):
+        raise SystemExit(
+            "[worker] REDIS_URL is not set. On the worker service, add a variable "
+            "reference to your Redis plugin, e.g. REDIS_URL=${{Redis.REDIS_URL}} "
+            "(or REDIS_PRIVATE_URL). Localhost will not work inside Railway."
+        )
+    return LOCAL_REDIS_DEFAULT
+
+
+def connect_redis(url: str, *, attempts: int = 30, delay_sec: float = 2.0) -> redis.Redis:
+    last_err: Exception | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            client = redis.from_url(url, decode_responses=True, socket_connect_timeout=5)
+            client.ping()
+            return client
+        except Exception as e:
+            last_err = e
+            log(f"redis connect attempt {attempt}/{attempts} failed: {e}")
+            time.sleep(delay_sec)
+    raise SystemExit(f"[worker] could not connect to redis at {url}: {last_err}")
 
 
 def s3_client():
@@ -198,16 +238,29 @@ def process_job(job: dict[str, Any]) -> None:
 
 
 def main() -> None:
-    log(f"starting; redis={REDIS_URL} queue={QUEUE_KEY} bucket={S3_BUCKET}")
-    # Validate DB URL host for logging only
+    redis_url = resolve_redis_url()
+    # Avoid logging passwords
+    safe_redis = redis_url
+    try:
+        p = urlparse(redis_url)
+        if p.password:
+            safe_redis = redis_url.replace(p.password, "***")
+    except Exception:
+        pass
+
+    log(f"starting; redis={safe_redis} queue={QUEUE_KEY} bucket={S3_BUCKET}")
+    if not DATABASE_URL:
+        raise SystemExit(
+            "[worker] DATABASE_URL is not set. Reference Postgres on the worker "
+            "service, e.g. DATABASE_URL=${{Postgres.DATABASE_URL}}"
+        )
     try:
         parsed = urlparse(DATABASE_URL)
         log(f"database host={parsed.hostname}")
     except Exception:
         pass
 
-    r = redis.from_url(REDIS_URL, decode_responses=True)
-    r.ping()
+    r = connect_redis(redis_url)
     log("redis ok; waiting for jobs")
 
     while True:

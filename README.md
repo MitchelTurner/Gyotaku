@@ -29,6 +29,15 @@ Deploy **three services**:
 
 Attach Postgres, Redis, and an S3-compatible bucket; set the env vars from `api/.env.example`.
 
+**Worker must get the same Redis/Postgres/S3 vars as the API** (sharing is not automatic). On the worker service Variables tab, add references such as:
+
+```
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+REDIS_URL=${{Redis.REDIS_URL}}
+```
+
+plus your `S3_*` values. If `REDIS_URL` is missing, the worker falls back to `localhost:6379` and crash-loops.
+
 ---
 
 ## How it works when finished

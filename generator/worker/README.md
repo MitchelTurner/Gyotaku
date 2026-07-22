@@ -18,16 +18,20 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
 # or: pip install -r requirements.txt
 
-export DATABASE_URL=postgresql://gyotaku:gyotaku@localhost:5432/gyotaku
-export REDIS_URL=redis://localhost:6379
-export S3_ENDPOINT=http://localhost:9000
-export S3_ACCESS_KEY_ID=minio
-export S3_SECRET_ACCESS_KEY=minio12345
-export S3_BUCKET=gyotaku
-export S3_FORCE_PATH_STYLE=true
-
+set -a && source worker/.env.example && set +a   # or export the vars below
 python worker/worker.py
 ```
+
+## Railway
+
+On the **worker** service (root directory `generator/`), set variable references to Redis + Postgres — they are not inherited from the API service:
+
+```
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+REDIS_URL=${{Redis.REDIS_URL}}
+```
+
+Also copy the API’s `S3_*` vars. See [`worker/.env.example`](.env.example).
 
 Job payload (JSON):
 
