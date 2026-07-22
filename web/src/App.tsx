@@ -22,6 +22,14 @@ import {
   type ReorderRecipe,
   type RenditionResponse,
 } from './lib/api'
+import {
+  controlsForNewPhoto,
+  DEFAULT_CONTROLS,
+  loadControls,
+  loadSeed,
+  saveControls,
+  saveSeed,
+} from './lib/controls'
 import { prepareUploadFile } from './lib/image'
 import { getSessionId } from './lib/session'
 
@@ -47,15 +55,6 @@ type Phase =
   | { name: 'orderResult'; orderId: string; kind: 'success' | 'cancel' }
   | { name: 'rejected'; rendition: RenditionResponse }
   | { name: 'error'; message: string }
-
-const DEFAULT_CONTROLS: StyleControls = {
-  strategy: 'flowfield',
-  density: 'default',
-  ink: 'default',
-  fishLengthIn: null,
-  species: null,
-  side: null,
-}
 
 const COMPARE_STRATEGIES: StrategyName[] = ['flowfield', 'contour', 'stipple']
 
@@ -173,8 +172,8 @@ export default function App() {
   const [phase, setPhase] = useState<Phase>(initialPhase)
   const [error, setError] = useState<string | null>(null)
   const [uploadId, setUploadId] = useState<string | null>(null)
-  const [seed, setSeed] = useState(() => Math.floor(Math.random() * 1_000_000_000))
-  const [controls, setControls] = useState<StyleControls>(DEFAULT_CONTROLS)
+  const [seed, setSeed] = useState(() => loadSeed())
+  const [controls, setControls] = useState<StyleControls>(() => loadControls())
   const [regenerating, setRegenerating] = useState(false)
   const [starting, setStarting] = useState(false)
   const [lastReady, setLastReady] = useState<RenditionResponse | null>(null)
@@ -185,6 +184,15 @@ export default function App() {
       if (pollRef.current) window.clearInterval(pollRef.current)
     }
   }, [])
+
+  // Sticky style controls + seed across redraws / return visits
+  useEffect(() => {
+    saveControls(controls)
+  }, [controls])
+
+  useEffect(() => {
+    saveSeed(seed)
+  }, [seed])
 
   function clearPoll() {
     if (pollRef.current) {
@@ -199,8 +207,11 @@ export default function App() {
     clearShareQuery()
     setUploadId(null)
     setLastReady(null)
-    setSeed(Math.floor(Math.random() * 1_000_000_000))
-    setControls(DEFAULT_CONTROLS)
+    // Keep density / ink / strategy sticky; clear length for the new catch
+    const nextControls = controlsForNewPhoto(controls)
+    const nextSeed = Math.floor(Math.random() * 1_000_000_000)
+    setSeed(nextSeed)
+    setControls(nextControls)
     setRegenerating(false)
     setStarting(false)
     setError(null)

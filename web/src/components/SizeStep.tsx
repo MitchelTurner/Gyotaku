@@ -26,8 +26,8 @@ export function SizeStep({
         How long is your fish?
       </h1>
       <p className="mt-3 text-sm text-ink/55">
-        Measure nose to tail tip. We’ll plot the impression at true size — the
-        same length as your catch.
+        Nose to tail tip. Pick a salmon preset, tap the tape, or type inches —
+        we’ll plot the impression at true size.
       </p>
 
       <div className="mt-10">

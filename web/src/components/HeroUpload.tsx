@@ -4,6 +4,12 @@ type Props = {
   onFile: (file: File) => void
 }
 
+const TIPS = [
+  { title: 'Side view', body: 'Nose-to-tail profile shows the silhouette best.' },
+  { title: 'Plain background', body: 'Grass, dock, or cooler lid — not busy foliage.' },
+  { title: 'Sharp & bright', body: 'Hold steady; avoid dusk blur and heavy shade.' },
+]
+
 export function HeroUpload({ busy, error, onFile }: Props) {
   return (
     <section className="flex min-h-dvh flex-col justify-end px-5 pb-10 pt-8 sm:px-10 sm:pb-14">
@@ -35,7 +41,7 @@ export function HeroUpload({ busy, error, onFile }: Props) {
             </span>
           </span>
           <span className="text-xs text-ink/50">
-            JPEG, PNG, or HEIC · phone photos welcome
+            JPEG, PNG, or HEIC · phone camera welcome
           </span>
           <input
             type="file"
@@ -55,6 +61,22 @@ export function HeroUpload({ busy, error, onFile }: Props) {
             {error}
           </p>
         ) : null}
+
+        {/* Tips sit below the CTA — keeps the first viewport brand + one CTA */}
+        <aside className="animate-rise-delay-2 mt-10 border-t border-ink/10 pt-6">
+          <p className="text-[11px] uppercase tracking-[0.18em] text-ink/40">
+            Before you shoot
+          </p>
+          <ul className="mt-3 space-y-2.5">
+            {TIPS.map((tip) => (
+              <li key={tip.title} className="text-sm leading-snug text-ink/60">
+                <span className="font-medium text-ink/80">{tip.title}</span>
+                <span className="text-ink/40"> — </span>
+                {tip.body}
+              </li>
+            ))}
+          </ul>
+        </aside>
       </div>
     </section>
   )
