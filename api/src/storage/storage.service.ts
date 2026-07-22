@@ -4,6 +4,7 @@ import {
 } from '@nestjs/common';
 import {
   GetObjectCommand,
+  HeadBucketCommand,
   HeadObjectCommand,
   PutObjectCommand,
   S3Client,
@@ -17,6 +18,8 @@ export class StorageService {
   readonly bucket: string;
   private readonly publicUrl: string;
   private readonly endpoint: string;
+  private readonly accessKeyId: string;
+  private readonly secretAccessKey: string;
   /** Host the browser must reach (rewrites localhost/internal signed URLs). */
   private readonly browserEndpoint: string | null;
 
@@ -24,6 +27,8 @@ export class StorageService {
     this.bucket = process.env.S3_BUCKET || 'gyotaku';
     this.publicUrl = (process.env.S3_PUBLIC_URL || '').replace(/\/$/, '');
     this.endpoint = process.env.S3_ENDPOINT || '';
+    this.accessKeyId = process.env.S3_ACCESS_KEY_ID || 'minio';
+    this.secretAccessKey = process.env.S3_SECRET_ACCESS_KEY || 'minio12345';
     this.browserEndpoint =
       (
         process.env.S3_BROWSER_ENDPOINT ||
@@ -41,8 +46,8 @@ export class StorageService {
       endpoint: this.endpoint || undefined,
       forcePathStyle,
       credentials: {
-        accessKeyId: process.env.S3_ACCESS_KEY_ID || 'minio',
-        secretAccessKey: process.env.S3_SECRET_ACCESS_KEY || 'minio12345',
+        accessKeyId: this.accessKeyId,
+        secretAccessKey: this.secretAccessKey,
       },
     });
 
@@ -58,6 +63,15 @@ export class StorageService {
   isLocalEndpoint(): boolean {
     if (!this.endpoint) return false;
     return /localhost|127\.0\.0\.1/.test(this.endpoint);
+  }
+
+  usingDefaultMinioCreds(): boolean {
+    return this.accessKeyId === 'minio' && this.secretAccessKey === 'minio12345';
+  }
+
+  /** Lightweight connectivity probe for /health. */
+  async headBucket() {
+    await this.client.send(new HeadBucketCommand({ Bucket: this.bucket }));
   }
 
   /** Fail early with a browser-visible message when storage can't work on Railway. */
@@ -156,6 +170,7 @@ export class StorageService {
       bucket: this.bucket,
       endpoint: this.endpoint || null,
       localEndpoint: this.isLocalEndpoint(),
+      usingDefaultMinioCreds: this.usingDefaultMinioCreds(),
       browserEndpoint: this.browserEndpoint,
     };
   }

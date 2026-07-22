@@ -33,7 +33,12 @@ from gyotaku.params import StyleParams, resolve_params  # noqa: E402
 from gyotaku.pipeline import generate  # noqa: E402
 
 QUEUE_KEY = os.environ.get("GYOTAKU_JOB_QUEUE", "gyotaku:jobs")
+DEADLETTER_KEY = os.environ.get("GYOTAKU_DEADLETTER_QUEUE", "gyotaku:deadletter")
+METRICS_LATENCY_KEY = os.environ.get("GYOTAKU_METRICS_LATENCY_KEY", "gyotaku:metrics:latency")
+QUEUE_DEPTH_ALERT = int(os.environ.get("QUEUE_DEPTH_ALERT", "25"))
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
+# Shared Redis client set in main() for dead-letter + metrics + health
+REDIS_CLIENT: redis.Redis | None = None
 S3_ENDPOINT = (os.environ.get("S3_ENDPOINT") or "").strip() or None
 S3_BUCKET = os.environ.get("S3_BUCKET", "gyotaku")
 S3_ACCESS_KEY_ID = os.environ.get("S3_ACCESS_KEY_ID", "minio")
@@ -148,10 +153,11 @@ def start_health_server() -> None:
                 payload = b'{"error":"not_found"}'
                 self.send_response(404)
             else:
-                body = dict(HEALTH)
-                body["storage"] = s3_config_summary()
+                body = build_health_payload()
                 payload = json.dumps(body).encode("utf-8")
-                code = 200 if body.get("status") == "ok" else 503
+                code = 200 if body.get("status") in ("ok", "degraded") else 503
+                if body.get("status") == "degraded":
+                    code = 200
                 self.send_response(code)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(payload)))
@@ -175,7 +181,208 @@ def s3_config_summary() -> dict[str, Any]:
         "forcePathStyle": S3_FORCE_PATH_STYLE,
         "usingDefaultMinioCreds": _DEFAULT_MINIO_CREDS,
         "isR2": _IS_R2,
+        "localEndpoint": bool(
+            S3_ENDPOINT and ("localhost" in S3_ENDPOINT or "127.0.0.1" in S3_ENDPOINT)
+        ),
     }
+
+
+def probe_storage() -> dict[str, Any]:
+    started = time.perf_counter()
+    summary = s3_config_summary()
+    if summary["usingDefaultMinioCreds"] and (
+        os.environ.get("RAILWAY_ENVIRONMENT") or summary["isR2"]
+    ):
+        return {
+            "status": "down",
+            "latencyMs": int((time.perf_counter() - started) * 1000),
+            "detail": "default MinIO credentials",
+        }
+    try:
+        client = boto3.client(
+            "s3",
+            endpoint_url=S3_ENDPOINT,
+            region_name=S3_REGION,
+            aws_access_key_id=S3_ACCESS_KEY_ID,
+            aws_secret_access_key=S3_SECRET_ACCESS_KEY,
+            config=Config(
+                signature_version="s3v4",
+                s3={"addressing_style": "path" if S3_FORCE_PATH_STYLE else "virtual"},
+            ),
+        )
+        client.head_bucket(Bucket=S3_BUCKET)
+        return {
+            "status": "ok",
+            "latencyMs": int((time.perf_counter() - started) * 1000),
+        }
+    except Exception as e:
+        return {
+            "status": "degraded",
+            "latencyMs": int((time.perf_counter() - started) * 1000),
+            "detail": str(e)[:200],
+        }
+
+
+def probe_redis() -> dict[str, Any]:
+    started = time.perf_counter()
+    if REDIS_CLIENT is None:
+        return {"status": "down", "detail": "redis client not ready", "depth": None}
+    try:
+        REDIS_CLIENT.ping()
+        depth = int(REDIS_CLIENT.llen(QUEUE_KEY))
+        dead = int(REDIS_CLIENT.llen(DEADLETTER_KEY))
+        status = "degraded" if depth >= QUEUE_DEPTH_ALERT else "ok"
+        return {
+            "status": status,
+            "latencyMs": int((time.perf_counter() - started) * 1000),
+            "depth": depth,
+            "deadLetterDepth": dead,
+        }
+    except Exception as e:
+        return {
+            "status": "down",
+            "latencyMs": int((time.perf_counter() - started) * 1000),
+            "detail": str(e)[:200],
+            "depth": None,
+            "deadLetterDepth": None,
+        }
+
+
+def build_health_payload() -> dict[str, Any]:
+    storage_check = probe_storage()
+    redis_check = probe_redis()
+    alerts: list[dict[str, str]] = []
+    if _DEFAULT_MINIO_CREDS:
+        alerts.append(
+            {
+                "level": "critical" if os.environ.get("RAILWAY_ENVIRONMENT") else "warning",
+                "code": "default_minio_creds",
+                "message": "S3 credentials are still the MinIO defaults (minio/minio12345)",
+            }
+        )
+    depth = redis_check.get("depth")
+    if isinstance(depth, int) and depth >= QUEUE_DEPTH_ALERT:
+        alerts.append(
+            {
+                "level": "critical",
+                "code": "queue_depth_spike",
+                "message": f"Job queue depth {depth} ≥ alert threshold {QUEUE_DEPTH_ALERT}",
+            }
+        )
+    dead = redis_check.get("deadLetterDepth")
+    if isinstance(dead, int) and dead >= int(os.environ.get("DEADLETTER_ALERT", "5")):
+        alerts.append(
+            {
+                "level": "warning",
+                "code": "deadletter_backlog",
+                "message": f"{dead} jobs in dead-letter queue",
+            }
+        )
+    if storage_check.get("status") == "down":
+        alerts.append(
+            {
+                "level": "critical",
+                "code": "storage_misconfigured",
+                "message": str(storage_check.get("detail") or "storage down"),
+            }
+        )
+    if redis_check.get("status") == "down":
+        alerts.append(
+            {
+                "level": "critical",
+                "code": "redis_down",
+                "message": str(redis_check.get("detail") or "redis down"),
+            }
+        )
+
+    base = dict(HEALTH)
+    boot = base.get("status")
+    if boot in ("misconfigured", "waiting_for_redis", "starting", "connecting"):
+        status = boot
+    elif storage_check.get("status") == "down" or redis_check.get("status") == "down":
+        status = "down"
+    elif any(a["level"] == "critical" for a in alerts) or storage_check.get("status") == "degraded" or redis_check.get("status") == "degraded":
+        status = "degraded"
+    else:
+        status = "ok"
+
+    if any(a["level"] == "critical" for a in alerts):
+        maybe_alert_webhook(alerts)
+
+    base.update(
+        {
+            "status": status,
+            "checks": {"redis": redis_check, "storage": storage_check},
+            "alerts": alerts,
+            "queue": {
+                "depth": depth,
+                "deadLetterDepth": dead,
+                "depthAlertAt": QUEUE_DEPTH_ALERT,
+            },
+            "storage": s3_config_summary(),
+            "time": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+    return base
+
+
+def push_deadletter(job: dict[str, Any], error: str) -> None:
+    if REDIS_CLIENT is None:
+        return
+    try:
+        payload = {
+            "failedAt": datetime.now(timezone.utc).isoformat(),
+            "error": error[:500],
+            "job": job,
+            "renditionId": job.get("renditionId"),
+        }
+        REDIS_CLIENT.lpush(DEADLETTER_KEY, json.dumps(payload))
+        REDIS_CLIENT.ltrim(DEADLETTER_KEY, 0, 499)
+    except Exception as e:
+        log(f"deadletter push failed: {e}")
+
+
+def record_latency_ms(ms: int) -> None:
+    if REDIS_CLIENT is None:
+        return
+    try:
+        REDIS_CLIENT.lpush(METRICS_LATENCY_KEY, str(int(ms)))
+        REDIS_CLIENT.ltrim(METRICS_LATENCY_KEY, 0, 499)
+    except Exception as e:
+        log(f"metrics push failed: {e}")
+
+
+def maybe_alert_webhook(alerts: list[dict[str, str]]) -> None:
+    url = os.environ.get("ALERT_WEBHOOK_URL", "").strip()
+    if not url or not alerts:
+        return
+    # Best-effort; throttle via Redis key
+    try:
+        if REDIS_CLIENT is not None:
+            if REDIS_CLIENT.get("gyotaku:alert:cooldown"):
+                return
+            REDIS_CLIENT.setex(
+                "gyotaku:alert:cooldown",
+                int(os.environ.get("ALERT_WEBHOOK_MIN_INTERVAL_SEC", "300")),
+                "1",
+            )
+        import urllib.request
+
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(
+                {
+                    "service": "gyotaku-worker",
+                    "alerts": alerts,
+                    "time": datetime.now(timezone.utc).isoformat(),
+                }
+            ).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        urllib.request.urlopen(req, timeout=5)
+    except Exception as e:
+        log(f"alert webhook failed: {e}")
 
 
 def assert_s3_configured() -> None:
@@ -284,6 +491,7 @@ def process_print_job(job: dict[str, Any]) -> None:
                 progress=lambda stage, detail="": log(f"{rendition_id}: print [{stage}] {detail}"),
             )
             if result.rejected or not result.print_path or not result.print_path.exists():
+                push_deadletter(job, result.failure_reason or "print rejected / missing")
                 log(f"{rendition_id}: print generation failed / rejected")
                 return
 
@@ -299,6 +507,7 @@ def process_print_job(job: dict[str, Any]) -> None:
     except Exception as e:
         log(f"{rendition_id}: print FAILED {e}")
         traceback.print_exc()
+        push_deadletter(job, str(e))
     finally:
         conn.close()
 
@@ -308,6 +517,7 @@ def process_generate_job(job: dict[str, Any]) -> None:
     s3_key = job["s3Key"]
     seed = int(job.get("seed") or 0)
     style_params = job.get("styleParams") or {}
+    started = time.perf_counter()
 
     s3 = s3_client()
     conn = db_connect()
@@ -363,6 +573,7 @@ def process_generate_job(job: dict[str, Any]) -> None:
                         "completedAt": datetime.now(timezone.utc),
                     },
                 )
+                record_latency_ms(int((time.perf_counter() - started) * 1000))
                 log(f"{rendition_id}: REJECTED matte={result.matte_score:.2f}")
                 return
 
@@ -408,10 +619,12 @@ def process_generate_job(job: dict[str, Any]) -> None:
                     "completedAt": datetime.now(timezone.utc),
                 },
             )
+            record_latency_ms(int((time.perf_counter() - started) * 1000))
             log(f"{rendition_id}: READY paths={result.path_count}")
     except Exception as e:
         log(f"{rendition_id}: FAILED {e}")
         traceback.print_exc()
+        push_deadletter(job, str(e))
         try:
             update_rendition(
                 conn,
@@ -474,8 +687,10 @@ def main() -> None:
         while True:
             time.sleep(60)
 
+    global REDIS_CLIENT
     HEALTH.update({"status": "connecting", "message": "connecting to redis", "missing": []})
     r = connect_redis(redis_url)
+    REDIS_CLIENT = r
     HEALTH.update(
         {
             "status": "ok",
@@ -491,6 +706,7 @@ def main() -> None:
         try:
             item = r.blpop(QUEUE_KEY, timeout=5)
             if not item:
+                # Idle tick — refresh health alerts (queue depth / storage)
                 continue
             _, raw = item
             job = json.loads(raw)

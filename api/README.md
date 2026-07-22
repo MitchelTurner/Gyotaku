@@ -21,8 +21,12 @@ NestJS API: upload → enqueue generation → poll watermarked preview → Strip
 | `POST` | `/operator/orders/:id/label` | Buy EasyPost/Shippo label → tracking + SHIPPED |
 | `POST` | `/operator/orders/:id/print` | Queue 300 DPI `printKey` for giclée |
 | `GET` | `/orders/availability/plotted` | Queue ETA + whether plotted originals are open |
+| `GET` | `/health` | Deep checks: Postgres, Redis, R2/S3, Stripe + alerts |
+| `GET` | `/operator/renditions/failed` | Failed jobs + dead-letter peek |
+| `POST` | `/operator/renditions/:id/retry` | Re-queue a failed rendition |
+| `GET` | `/operator/metrics` | p50/p95 generate time, reject/fail rates |
 
-Operator UI: open `/operator` on the web app and paste `OPERATOR_TOKEN`.
+Operator UI: open `/operator` on the web app and paste `OPERATOR_TOKEN` (tabs: Fulfillment / Failed jobs / Metrics).
 
 Rate limits (per `sessionId`): **10 uploads/hour**, **30 renditions/hour**.
 

@@ -4,6 +4,10 @@ Plain Redis queue consumer. No web framework.
 
 ```
 BLPOP gyotaku:jobs → download upload from S3 → gyotaku.pipeline.generate
+
+Failed jobs are pushed to `gyotaku:deadletter`. Generate latencies go to
+`gyotaku:metrics:latency`. `/health` probes Redis + R2 and alerts on default
+MinIO creds or queue-depth spikes (`QUEUE_DEPTH_ALERT`, optional `ALERT_WEBHOOK_URL`).
   → upload SVG + preview → update Rendition row in Postgres
 ```
 

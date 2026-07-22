@@ -75,10 +75,11 @@ Every artwork stores its **seed + settings**, so a reprint or re-plot is identic
 
 ### For the operator
 
-- Open **`/operator`** on the web app (token = `OPERATOR_TOKEN`): one-click SVG download, status chips, labels.
+- Open **`/operator`** on the web app (token = `OPERATOR_TOKEN`): fulfillment, failed-job retry, metrics.
 - Originals stay limited; if plot-queue ETA exceeds `PLOTTED_QUEUE_MAX_DAYS`, that tier closes automatically.
 - Paid giclées enqueue a 300 DPI `printKey` for POD handoff.
 - Optional EasyPost/Shippo: **Buy label + ship** writes tracking and marks SHIPPED.
+- `/health` on API + worker probes Redis, R2/S3, Stripe config and surfaces queue-depth / MinIO-default alerts (`ALERT_WEBHOOK_URL` optional).
 
 ### What “finished” really means
 

@@ -1,6 +1,6 @@
-/** Redis list payload for on-demand 300 DPI print generation (giclée). */
+import { PYTHON_JOB_QUEUE } from '../queue/queue.constants';
 
-export const PYTHON_JOB_QUEUE = 'gyotaku:jobs';
+export { PYTHON_JOB_QUEUE };
 
 export type PrintJobPayload = {
   type: 'print';

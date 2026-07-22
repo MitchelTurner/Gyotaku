@@ -137,3 +137,55 @@ export function requestOperatorPrint(id: string) {
     method: 'POST',
   })
 }
+
+export type FailedRendition = {
+  id: string
+  uploadId: string
+  sessionId: string
+  status: string
+  stage: string | null
+  failureReason: string | null
+  seed: number
+  createdAt: string
+  completedAt: string | null
+}
+
+export type FailedRenditionsResponse = {
+  failed: FailedRendition[]
+  deadLetter: unknown[]
+  deadLetterDepth: number
+}
+
+export type OperatorMetrics = {
+  windowHours: number
+  sampleSize: number
+  generateMs: { p50: number | null; p95: number | null; max: number | null }
+  workerSampleMs: {
+    p50: number | null
+    p95: number | null
+    sampleSize: number
+  }
+  outcomes: {
+    ready: number
+    rejected: number
+    failed: number
+    rejectRate: number | null
+    failRate: number | null
+  }
+  queue: { depth: number; deadLetterDepth: number }
+}
+
+export function listFailedRenditions() {
+  return operatorRequest<FailedRenditionsResponse>('/operator/renditions/failed')
+}
+
+export function retryRendition(id: string) {
+  return operatorRequest<{ id: string; status: string }>(
+    `/operator/renditions/${id}/retry`,
+    { method: 'POST' },
+  )
+}
+
+export function getOperatorMetrics(hours = 24) {
+  return operatorRequest<OperatorMetrics>(`/operator/metrics?hours=${hours}`)
+}

@@ -1,20 +1,19 @@
-import { Controller, Get } from '@nestjs/common';
-import { StorageService } from './storage/storage.service';
+import { Controller, Get, Res } from '@nestjs/common';
+import type { Response } from 'express';
+import { HealthService } from './health/health.service';
 
 @Controller()
 export class HealthController {
-  constructor(private readonly storage: StorageService) {}
+  constructor(private readonly health: HealthService) {}
 
   @Get(['/', 'health', 'healthz'])
-  health() {
-    const storage = this.storage.configSummary();
-    return {
-      status: storage.localEndpoint && process.env.RAILWAY_ENVIRONMENT
-        ? 'degraded'
-        : 'ok',
-      phase: 1,
-      service: 'gyotaku-api',
-      storage,
-    };
+  async healthz(@Res({ passthrough: true }) res: Response) {
+    const body = await this.health.probe();
+    if (body.status === 'down') {
+      res.status(503);
+    } else if (body.status === 'degraded') {
+      res.status(200);
+    }
+    return body;
   }
 }

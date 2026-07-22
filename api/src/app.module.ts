@@ -6,7 +6,7 @@ import { StorageModule } from './storage/storage.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { RenditionsModule } from './renditions/renditions.module';
 import { OrdersModule } from './orders/orders.module';
-import { HealthController } from './health.controller';
+import { HealthModule } from './health/health.module';
 import { SessionModule } from './session/session.module';
 
 @Module({
@@ -23,7 +23,7 @@ import { SessionModule } from './session/session.module';
     UploadsModule,
     RenditionsModule,
     OrdersModule,
+    HealthModule,
   ],
-  controllers: [HealthController],
 })
 export class AppModule {}
