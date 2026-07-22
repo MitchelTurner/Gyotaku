@@ -40,11 +40,13 @@ If you only have a generator/worker service, add a new service from the same rep
 
 If the Redis service is named something other than `Redis`, the reference uses that name (Railway shows it in the picker). Worker `/health` returns `503` with `"missing":["REDIS_URL"]` until this is set.
 
-On **web**, set `VITE_API_URL=https://gyotaku.up.railway.app` (or your API domain; no trailing slash) at **build** time. On **api**, set `CORS_ORIGINS` to the web origin (or leave empty while bringing up).
+**If the web UI says Failed to fetch**, fix Railway variables then redeploy api + web:
 
-**Storage (required for uploads):** the browser uploads to the **API** (`PUT /uploads/:id/content`); the API writes to S3. `S3_ENDPOINT=http://localhost:9000` still breaks production — point `S3_*` on **api** and **worker** at a real bucket (Cloudflare R2, AWS S3, or MinIO on Railway). Health shows `"storage":{"localEndpoint":true}` when misconfigured.
+1. **api** → delete `CORS_ORIGINS` (a leftover `localhost:5173` blocks `gyotaku-web`)
+2. **web** → delete `VITE_API_URL` (app should call same-origin `/api`)
+3. **web** → add `API_PROXY_TARGET=https://gyotaku.up.railway.app`
 
-Also clear `CORS_ORIGINS` on the API (or set it to your web URL). A leftover `http://localhost:5173` blocks the browser.
+**Storage:** set real `S3_*` on api + worker (not `localhost:9000`).
 
 ---
 
