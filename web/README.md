@@ -17,12 +17,13 @@ Vite proxies `/api` → `http://localhost:3000`.
 
 Create a **separate** service (not the worker):
 
-1. New service → same GitHub repo
-2. **Root Directory** = `web`
-3. Variables (available at **build** time): `VITE_API_URL=https://<your-api>.up.railway.app`
-4. Deploy → open **this** service’s public URL
+1. New service → same GitHub repo  
+2. **Root Directory** = `web`  
+3. **Do not set** `VITE_API_URL` (leave empty so the app uses `/api`)  
+4. Runtime variable: `API_PROXY_TARGET=https://gyotaku.up.railway.app`  
+5. Deploy → open **this** service’s public URL (`gyotaku-web.up.railway.app`)
 
-The worker URL (`{"service":"gyotaku-worker",...}`) is not the frontend.
+Caddy proxies `/api/*` → the API (avoids CORS). The worker URL is not the frontend.
 
 ## Flow
 

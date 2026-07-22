@@ -1,4 +1,9 @@
 {
   "$schema": "https://schema.railpack.com",
-  "provider": "node"
+  "provider": "node",
+  "deploy": {
+    "variables": {
+      "RAILPACK_SPA_OUTPUT_DIR": "dist"
+    }
+  }
 }

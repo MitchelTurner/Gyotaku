@@ -1,0 +1,31 @@
+{
+	admin off
+	persist_config off
+	auto_https off
+	log {
+		format json
+	}
+	servers {
+		trusted_proxies static private_ranges 100.0.0.0/8
+	}
+}
+
+:{$PORT:3000} {
+	log {
+		format json
+	}
+
+	# Same-origin API proxy — browser never cross-origin fetches the API.
+	# Set API_PROXY_TARGET on the web service, e.g. https://gyotaku.up.railway.app
+	# or http://<api-service>.railway.internal:PORT
+	handle_path /api/* {
+		reverse_proxy {$API_PROXY_TARGET:https://gyotaku.up.railway.app}
+	}
+
+	handle {
+		root * dist
+		encode gzip
+		try_files {path} /index.html
+		file_server
+	}
+}

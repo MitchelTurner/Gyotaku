@@ -4,15 +4,18 @@ import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Always reflect the request Origin. A stale CORS_ORIGINS=http://localhost:5173
+  // on Railway was blocking https://gyotaku-web.up.railway.app → "Failed to fetch".
+  // Set CORS_STRICT=1 to enforce CORS_ORIGINS as an allowlist.
+  const strict = process.env.CORS_STRICT === '1' || process.env.CORS_STRICT === 'true';
   const origins = (process.env.CORS_ORIGINS || '')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
 
-  // Reflect the request Origin by default so the web service can call the API.
-  // If CORS_ORIGINS is set, only those origins are allowed.
   app.enableCors({
-    origin: origins.length
+    origin: strict
       ? (
           origin: string | undefined,
           cb: (err: Error | null, allow?: boolean | string) => void,
@@ -29,7 +32,17 @@ async function bootstrap() {
         }
       : true,
     credentials: true,
+    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
   });
+
+  // eslint-disable-next-line no-console
+  console.log(
+    strict
+      ? `[cors] strict allowlist: ${origins.join(',') || '(empty)'}`
+      : '[cors] reflecting any Origin (set CORS_STRICT=1 to lock down)',
+  );
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
