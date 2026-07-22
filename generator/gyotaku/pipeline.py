@@ -224,6 +224,9 @@ def generate(
         "svgSha256": digest,
         "canvas": params.canvas,
         "strategy": params.strategy,
+        "fishLengthIn": params.fish_length_in,
+        "paperWidthMm": layout.canvas_w_mm,
+        "paperHeightMm": layout.canvas_h_mm,
         "source": str(Path(image_path).resolve()),
     }
     meta_path = output_dir / "meta.json"

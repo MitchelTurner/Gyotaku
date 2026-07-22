@@ -11,7 +11,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from gyotaku.marks.base import Path as StrokePath
-from gyotaku.params import CANVAS_MM, StyleParams
+from gyotaku.params import CANVAS_MM, INCH_TO_MM, StyleParams
 
 
 @dataclass
@@ -24,9 +24,37 @@ class Layout:
     # subject crop size in px
     subject_w_px: int
     subject_h_px: int
+    fish_length_in: float | None = None
+    fish_length_mm: float | None = None
 
 
 def compute_layout(subject_w: int, subject_h: int, params: StyleParams) -> Layout:
+    """Map subject pixel space → physical millimetres on paper.
+
+    If ``fish_length_in`` is set, the subject's long edge (nose–tail in the matte
+    bbox) is scaled to that exact length and the paper grows to fit + margins.
+    Otherwise the fish is fitted into a named canvas via ``subject_fill``.
+    """
+    if params.fish_length_in is not None and params.fish_length_in > 0:
+        length_mm = float(params.fish_length_in) * INCH_TO_MM
+        long_px = max(subject_w, subject_h, 1)
+        scale_mm_per_px = length_mm / float(long_px)
+        placed_w = subject_w * scale_mm_per_px
+        placed_h = subject_h * scale_mm_per_px
+        cw = placed_w + 2 * params.margin_mm
+        ch = placed_h + 2 * params.margin_mm
+        return Layout(
+            canvas_w_mm=cw,
+            canvas_h_mm=ch,
+            offset_x_mm=params.margin_mm,
+            offset_y_mm=params.margin_mm,
+            px_to_mm=scale_mm_per_px,
+            subject_w_px=subject_w,
+            subject_h_px=subject_h,
+            fish_length_in=float(params.fish_length_in),
+            fish_length_mm=length_mm,
+        )
+
     cw, ch = CANVAS_MM[params.canvas]
     # Drawable area inside margins
     draw_w = cw - 2 * params.margin_mm
@@ -61,6 +89,12 @@ def paths_to_svg(
     image_hash: str,
     style_fingerprint: str,
 ) -> str:
+    life = ""
+    if layout.fish_length_in is not None and layout.fish_length_mm is not None:
+        life = (
+            f' data-fish-length-in="{layout.fish_length_in:.3f}" '
+            f'data-fish-length-mm="{layout.fish_length_mm:.3f}"'
+        )
     parts = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         (
@@ -68,7 +102,7 @@ def paths_to_svg(
             f'width="{layout.canvas_w_mm}mm" height="{layout.canvas_h_mm}mm" '
             f'viewBox="0 0 {layout.canvas_w_mm} {layout.canvas_h_mm}" '
             f'data-seed="{seed}" data-image-hash="{escape(image_hash)}" '
-            f'data-style="{escape(style_fingerprint)}">'
+            f'data-style="{escape(style_fingerprint)}"{life}>'
         ),
         "<!-- gyotaku plotter output: paths only, single black layer -->",
         '<g id="pen-black" fill="none" stroke="#000000" stroke-width="0.35" '

@@ -9,7 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import asdict, dataclass, field, fields
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 
 CanvasSize = Literal["A3", "A2", "18x24in"]
@@ -22,6 +22,11 @@ CANVAS_MM: dict[str, tuple[float, float]] = {
     "18x24in": (457.2, 609.6),
 }
 
+# Life-size print: measured fish length (nose–tail) in inches
+MIN_FISH_LENGTH_IN = 4.0
+MAX_FISH_LENGTH_IN = 60.0
+INCH_TO_MM = 25.4
+
 
 @dataclass(frozen=True)
 class StyleParams:
@@ -33,6 +38,9 @@ class StyleParams:
     canvas: CanvasSize = "A3"
     margin_mm: float = 25.0
     subject_fill: float = 0.72  # subject bbox as fraction of drawable area
+    # When set, the fish long edge is plotted at exactly this length (inches).
+    # Paper grows to fit (margins included). None = fit to named canvas via subject_fill.
+    fish_length_in: Optional[float] = None
 
     # Ingest
     process_long_edge: int = 2048
@@ -105,6 +113,12 @@ class StyleParams:
     def from_dict(cls, data: dict[str, Any]) -> StyleParams:
         known = {f.name for f in fields(cls)}
         filtered = {k: v for k, v in data.items() if k in known}
+        if "fish_length_in" in filtered:
+            raw = filtered["fish_length_in"]
+            if raw is None or raw == "":
+                filtered["fish_length_in"] = None
+            else:
+                filtered["fish_length_in"] = float(raw)
         return cls(**filtered)
 
     @classmethod
@@ -157,4 +171,12 @@ def resolve_params(
     # Clamp posterize
     levels = int(data.get("posterize_levels", 4))
     data["posterize_levels"] = max(3, min(6, levels))
+    # Clamp / clear fish length
+    fl = data.get("fish_length_in")
+    if fl is None or fl == "":
+        data["fish_length_in"] = None
+    else:
+        data["fish_length_in"] = max(
+            MIN_FISH_LENGTH_IN, min(MAX_FISH_LENGTH_IN, float(fl))
+        )
     return StyleParams.from_dict(data)

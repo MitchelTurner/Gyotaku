@@ -1,10 +1,12 @@
 import type { ReactNode } from 'react'
 import type { RenditionResponse } from '../lib/api'
+import { FishSizeInput } from './FishSize'
 
 export type StyleControls = {
   strategy: 'flowfield' | 'contour' | 'stipple'
   density: 'sparse' | 'default' | 'dense'
   ink: 'crisp' | 'default' | 'soft'
+  fishLengthIn: number | null
 }
 
 type Props = {
@@ -24,6 +26,11 @@ export function Preview({
   onRegenerate,
   onStartOver,
 }: Props) {
+  const lengthLabel =
+    controls.fishLengthIn != null
+      ? ` · life-size ${formatLen(controls.fishLengthIn)}`
+      : ''
+
   return (
     <section className="mx-auto flex min-h-dvh w-full max-w-6xl flex-col gap-8 px-4 py-8 sm:px-8 lg:flex-row lg:items-start lg:gap-12 lg:py-12">
       <div className="min-w-0 flex-1">
@@ -53,6 +60,7 @@ export function Preview({
         </div>
         <p className="mt-3 text-xs text-ink/40">
           Watermarked preview
+          {lengthLabel}
           {rendition.estPlotSeconds
             ? ` · ~${Math.round(rendition.estPlotSeconds / 60)} min plot`
             : ''}
@@ -67,6 +75,15 @@ export function Preview({
         <p className="mt-2 text-sm text-ink/55">
           Each change draws a new rendition from the same photo.
         </p>
+
+        <div className="mt-7">
+          <FishSizeInput
+            value={controls.fishLengthIn}
+            onChange={(fishLengthIn) =>
+              onControlsChange({ ...controls, fishLengthIn })
+            }
+          />
+        </div>
 
         <ControlGroup label="Style">
           {(
@@ -130,6 +147,11 @@ export function Preview({
       </aside>
     </section>
   )
+}
+
+function formatLen(n: number): string {
+  const rounded = Math.round(n * 4) / 4
+  return `${rounded}"`
 }
 
 function ControlGroup({

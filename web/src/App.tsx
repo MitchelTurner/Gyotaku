@@ -3,6 +3,8 @@ import { HeroUpload } from './components/HeroUpload'
 import { Preview, type StyleControls } from './components/Preview'
 import { Processing } from './components/Processing'
 import { RejectNotice } from './components/RejectNotice'
+import { SizeStep } from './components/SizeStep'
+import { clampFishLength } from './components/FishSize'
 import {
   completeUpload,
   createRendition,
@@ -17,6 +19,7 @@ import { getSessionId } from './lib/session'
 type Phase =
   | { name: 'idle' }
   | { name: 'uploading' }
+  | { name: 'size'; uploadId: string }
   | { name: 'processing'; renditionId: string; stage: string | null }
   | { name: 'ready'; rendition: RenditionResponse }
   | { name: 'rejected'; rendition: RenditionResponse }
@@ -26,12 +29,17 @@ const DEFAULT_CONTROLS: StyleControls = {
   strategy: 'flowfield',
   density: 'default',
   ink: 'default',
+  fishLengthIn: null,
 }
 
 function styleParamsFromControls(c: StyleControls): Record<string, unknown> {
   const params: Record<string, unknown> = {
     strategy: c.strategy,
     watermark: true,
+  }
+
+  if (c.fishLengthIn != null && Number.isFinite(c.fishLengthIn)) {
+    params.fish_length_in = clampFishLength(c.fishLengthIn)
   }
 
   if (c.density === 'sparse') {
@@ -75,6 +83,7 @@ export default function App() {
   const [seed, setSeed] = useState(() => Math.floor(Math.random() * 1_000_000_000))
   const [controls, setControls] = useState<StyleControls>(DEFAULT_CONTROLS)
   const [regenerating, setRegenerating] = useState(false)
+  const [starting, setStarting] = useState(false)
   const pollRef = useRef<number | null>(null)
 
   useEffect(() => {
@@ -96,6 +105,7 @@ export default function App() {
     setSeed(Math.floor(Math.random() * 1_000_000_000))
     setControls(DEFAULT_CONTROLS)
     setRegenerating(false)
+    setStarting(false)
     setError(null)
     setPhase({ name: 'idle' })
   }
@@ -111,6 +121,7 @@ export default function App() {
         }
         clearPoll()
         setRegenerating(false)
+        setStarting(false)
         if (r.status === 'READY') {
           startTransition(() => setPhase({ name: 'ready', rendition: r }))
         } else if (r.status === 'REJECTED') {
@@ -124,6 +135,7 @@ export default function App() {
       } catch (e) {
         clearPoll()
         setRegenerating(false)
+        setStarting(false)
         setPhase({
           name: 'error',
           message: e instanceof Error ? e.message : 'Polling failed',
@@ -144,11 +156,13 @@ export default function App() {
     })
     if (rendition.status === 'READY') {
       setRegenerating(false)
+      setStarting(false)
       setPhase({ name: 'ready', rendition })
       return
     }
     if (rendition.status === 'REJECTED') {
       setRegenerating(false)
+      setStarting(false)
       setPhase({ name: 'rejected', rendition })
       return
     }
@@ -180,11 +194,27 @@ export default function App() {
       )
       const complete = await completeUpload(presign.uploadId, sessionId)
       setUploadId(complete.id)
-      await enqueueRendition(complete.id, controls)
+      setPhase({ name: 'size', uploadId: complete.id })
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Upload failed'
       setError(message)
       setPhase({ name: 'idle' })
+    }
+  }
+
+  async function startWithControls(next: StyleControls) {
+    if (!uploadId) return
+    setControls(next)
+    setStarting(true)
+    setPhase({ name: 'processing', renditionId: '', stage: 'queued' })
+    try {
+      await enqueueRendition(uploadId, next)
+    } catch (e) {
+      setStarting(false)
+      setPhase({
+        name: 'error',
+        message: e instanceof Error ? e.message : 'Could not start drawing',
+      })
     }
   }
 
@@ -210,6 +240,19 @@ export default function App() {
           busy={phase.name === 'uploading'}
           error={error}
           onFile={handleFile}
+        />
+      )}
+
+      {phase.name === 'size' && (
+        <SizeStep
+          fishLengthIn={controls.fishLengthIn}
+          onChange={(fishLengthIn) => setControls({ ...controls, fishLengthIn })}
+          onContinue={() => startWithControls(controls)}
+          onSkipFitToPaper={() =>
+            startWithControls({ ...controls, fishLengthIn: null })
+          }
+          onBack={resetToIdle}
+          busy={starting}
         />
       )}
 
