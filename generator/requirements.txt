@@ -1,2 +1,0 @@
-# Railpack / Railway install entrypoint for the generator + worker service.
--e .
