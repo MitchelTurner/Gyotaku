@@ -23,11 +23,13 @@ Phase 3 (checkout, fulfillment) comes next.
 
 Deploy **three services**:
 
-1. **web** — root directory `web/` (set `VITE_API_URL` to the API origin at build time)
-2. **api** — root directory `api/`
-3. **worker** — root directory `generator/`
+1. **web** — root directory `web/` (set `VITE_API_URL` to the API origin at **build** time). This is the public app URL.
+2. **api** — root directory `api/` (public or private; web calls it via `VITE_API_URL`)
+3. **worker** — root directory `generator/` (can be private; only needs Redis/Postgres/S3)
 
 Attach Postgres, Redis, and an S3-compatible bucket; set the env vars from `api/.env.example`.
+
+**Open the web service URL** for the UI. The worker URL only returns a JSON health check — it is not the app.
 
 **Worker must get the same Redis/Postgres/S3 vars as the API** (sharing is not automatic). On the worker service Variables tab, add references such as:
 
@@ -37,6 +39,8 @@ REDIS_URL=${{Redis.REDIS_URL}}
 ```
 
 plus your `S3_*` values. If `REDIS_URL` is missing, the worker falls back to `localhost:6379` and crash-loops.
+
+On **web**, set `VITE_API_URL=https://<your-api-service>.up.railway.app` (no trailing slash) before/at build. On **api**, set `CORS_ORIGINS` to the web origin.
 
 ---
 

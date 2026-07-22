@@ -10,9 +10,11 @@ import json
 import os
 import sys
 import tempfile
+import threading
 import time
 import traceback
 from datetime import datetime, timezone
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -83,6 +85,42 @@ def connect_redis(url: str, *, attempts: int = 30, delay_sec: float = 2.0) -> re
             log(f"redis connect attempt {attempt}/{attempts} failed: {e}")
             time.sleep(delay_sec)
     raise SystemExit(f"[worker] could not connect to redis at {url}: {last_err}")
+
+
+def start_health_server() -> None:
+    """Bind PORT so Railway public networking / health checks don't 502.
+
+    The worker is not the product UI — open the *web* service URL for that.
+    """
+    port_raw = os.environ.get("PORT")
+    if not port_raw:
+        return
+    port = int(port_raw)
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:  # noqa: N802
+            body = {
+                "status": "ok",
+                "service": "gyotaku-worker",
+                "message": "Queue worker is up. Use the web service URL for the app UI.",
+            }
+            payload = json.dumps(body).encode("utf-8")
+            code = 200 if self.path in ("/", "/health", "/healthz") else 404
+            if code == 404:
+                payload = b'{"error":"not_found"}'
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, fmt: str, *args: Any) -> None:
+            return
+
+    server = HTTPServer(("0.0.0.0", port), Handler)
+    thread = threading.Thread(target=server.serve_forever, name="health", daemon=True)
+    thread.start()
+    log(f"health listening on 0.0.0.0:{port}")
 
 
 def s3_client():
@@ -238,6 +276,8 @@ def process_job(job: dict[str, Any]) -> None:
 
 
 def main() -> None:
+    start_health_server()
+
     redis_url = resolve_redis_url()
     # Avoid logging passwords
     safe_redis = redis_url
