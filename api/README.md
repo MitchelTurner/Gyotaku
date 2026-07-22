@@ -12,21 +12,23 @@ NestJS API: upload → enqueue generation → poll watermarked preview → Strip
 | `POST` | `/uploads/:id/complete` | Confirm upload, hash + dimensions |
 | `POST` | `/renditions` | Enqueue generation |
 | `GET` | `/renditions/:id` | Poll status / preview URL |
-| `GET` | `/orders/quote` | Price for product + fish length |
-| `POST` | `/orders/checkout` | Create Stripe Checkout session |
+| `GET` | `/orders/quote` | Length-band SKU price + shipping for product |
+| `POST` | `/orders/checkout` | Create Stripe Checkout (product + shipping lines) |
+| `POST` | `/orders/waitlist` | Join waitlist when plotted queue is closed |
 | `GET` | `/orders/:id` | Order status (session-scoped) |
 | `POST` | `/webhooks/stripe` | Stripe webhook (raw body) |
 | `GET` | `/operator/orders` | Fulfillment queue (`x-operator-token`) |
 | `PATCH` | `/operator/orders/:id` | Update fulfillment status |
 | `POST` | `/operator/orders/:id/label` | Buy EasyPost/Shippo label → tracking + SHIPPED |
 | `POST` | `/operator/orders/:id/print` | Queue 300 DPI `printKey` for giclée |
+| `GET` | `/operator/waitlist` | Plotted-original waitlist |
 | `GET` | `/orders/availability/plotted` | Queue ETA + whether plotted originals are open |
 | `GET` | `/health` | Deep checks: Postgres, Redis, R2/S3, Stripe + alerts |
 | `GET` | `/operator/renditions/failed` | Failed jobs + dead-letter peek |
 | `POST` | `/operator/renditions/:id/retry` | Re-queue a failed rendition |
 | `GET` | `/operator/metrics` | p50/p95 generate time, reject/fail rates |
 
-Operator UI: open `/operator` on the web app and paste `OPERATOR_TOKEN` (tabs: Fulfillment / Failed jobs / Metrics).
+Operator UI: open `/operator` on the web app and paste `OPERATOR_TOKEN` (tabs: Fulfillment / Waitlist / Failed jobs / Metrics).
 
 Rate limits (per `sessionId`): **10 uploads/hour**, **30 renditions/hour**.
 

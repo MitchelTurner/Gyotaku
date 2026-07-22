@@ -13,7 +13,11 @@ import {
 import { OrderStatus, ProductType } from '@prisma/client';
 import type { RawBodyRequest } from '@nestjs/common';
 import type { Request } from 'express';
-import { CreateCheckoutDto, UpdateFulfillmentDto } from './dto';
+import {
+  CreateCheckoutDto,
+  JoinWaitlistDto,
+  UpdateFulfillmentDto,
+} from './dto';
 import { OrdersService } from './orders.service';
 
 @Controller()
@@ -38,6 +42,11 @@ export class OrdersController {
   @Post('orders/checkout')
   checkout(@Body() body: CreateCheckoutDto) {
     return this.orders.createCheckout(body);
+  }
+
+  @Post('orders/waitlist')
+  joinWaitlist(@Body() body: JoinWaitlistDto) {
+    return this.orders.joinWaitlist(body);
   }
 
   @Get('orders/:id')
@@ -108,6 +117,12 @@ export class OrdersController {
   ) {
     assertOperator(token);
     return this.orders.requestPrint(id);
+  }
+
+  @Get('operator/waitlist')
+  listWaitlist(@Headers('x-operator-token') token: string | undefined) {
+    assertOperator(token);
+    return this.orders.listWaitlist();
   }
 }
 

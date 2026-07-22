@@ -122,25 +122,44 @@ export function getShareRendition(id: string) {
   return request<ShareRenditionResponse>(`/share/renditions/${id}`)
 }
 
-export type ProductType = 'PLOTTED_ORIGINAL' | 'GICLEE'
+export type ProductType = 'PLOTTED_ORIGINAL' | 'GICLEE' | 'GICLEE_FRAMED'
 
 export type QuoteResponse = {
   productType: ProductType
   fishLengthIn: number | null
+  band?: string
+  sku?: string
+  skuLabel?: string
   amountCents: number
+  shippingCents?: number
+  totalCents?: number
   currency: string
   label: string
   available?: boolean
   unavailableReason?: string | null
   queueEtaDays?: number | null
+  waitlistOpen?: boolean
 }
 
 export type CheckoutResponse = {
   orderId: string
   checkoutUrl: string
   amountCents: number
+  productAmountCents?: number
+  shippingCents?: number
+  sku?: string
   currency: string
   productType: ProductType
+}
+
+export type WaitlistResponse = {
+  id: string
+  email: string
+  productType: ProductType
+  sku: string | null
+  fishLengthIn: number | null
+  reason: string | null
+  message: string
 }
 
 export type ReorderRecipe = {
@@ -200,8 +219,23 @@ export function createCheckout(body: {
   productType: ProductType
   fishLengthIn?: number | null
   email?: string
+  giftNote?: string
 }) {
   return request<CheckoutResponse>('/orders/checkout', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+}
+
+export function joinWaitlist(body: {
+  email: string
+  sessionId?: string
+  renditionId?: string
+  fishLengthIn?: number | null
+  productType?: ProductType
+  note?: string
+}) {
+  return request<WaitlistResponse>('/orders/waitlist', {
     method: 'POST',
     body: JSON.stringify(body),
   })

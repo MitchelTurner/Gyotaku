@@ -7,6 +7,7 @@ import {
   getOperatorToken,
   listFailedRenditions,
   listOperatorOrders,
+  listOperatorWaitlist,
   patchOperatorOrder,
   requestOperatorPrint,
   retryRendition,
@@ -16,9 +17,10 @@ import {
   type OperatorOrder,
   type OperatorStatus,
   type PlottedAvailability,
+  type WaitlistEntry,
 } from '../lib/operatorApi'
 
-type Tab = 'orders' | 'failed' | 'metrics'
+type Tab = 'orders' | 'failed' | 'metrics' | 'waitlist'
 
 const STATUS_FLOW: OperatorStatus[] = [
   'PAID',
@@ -42,6 +44,17 @@ function nextStatuses(order: OperatorOrder): OperatorStatus[] {
   return ['PAID', 'PRINTING', 'PACKED', 'SHIPPED', 'CANCELLED']
 }
 
+function productTypeShort(t: OperatorOrder['productType']): string {
+  switch (t) {
+    case 'PLOTTED_ORIGINAL':
+      return 'Plotted'
+    case 'GICLEE_FRAMED':
+      return 'Framed giclée'
+    default:
+      return 'Giclée'
+  }
+}
+
 export function OperatorQueue() {
   const [tokenInput, setTokenInput] = useState(() => getOperatorToken())
   const [authed, setAuthed] = useState(() => Boolean(getOperatorToken()))
@@ -51,6 +64,7 @@ export function OperatorQueue() {
   const [failed, setFailed] = useState<FailedRendition[]>([])
   const [deadLetterDepth, setDeadLetterDepth] = useState(0)
   const [metrics, setMetrics] = useState<OperatorMetrics | null>(null)
+  const [waitlist, setWaitlist] = useState<WaitlistEntry[]>([])
   const [filter, setFilter] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -66,6 +80,9 @@ export function OperatorQueue() {
         const res = await listFailedRenditions()
         setFailed(res.failed)
         setDeadLetterDepth(res.deadLetterDepth)
+      } else if (tab === 'waitlist') {
+        const res = await listOperatorWaitlist()
+        setWaitlist(res.entries)
       } else {
         setMetrics(await getOperatorMetrics(24))
       }
@@ -198,6 +215,7 @@ export function OperatorQueue() {
         {(
           [
             ['orders', 'Fulfillment'],
+            ['waitlist', 'Waitlist'],
             ['failed', 'Failed jobs'],
             ['metrics', 'Metrics'],
           ] as const
@@ -277,6 +295,32 @@ export function OperatorQueue() {
             ))}
           </ul>
         </>
+      )}
+
+      {tab === 'waitlist' && (
+        <div className="mt-8 space-y-4">
+          <p className="text-sm text-ink/55">
+            {waitlist.length} waiting for plotted originals to reopen.
+          </p>
+          {waitlist.length === 0 && (
+            <p className="text-sm text-ink/45">Waitlist is empty.</p>
+          )}
+          {waitlist.map((e) => (
+            <div key={e.id} className="border-t border-ink/10 pt-4">
+              <p className="text-sm text-ink/80">{e.email}</p>
+              <p className="mt-1 text-xs text-ink/40">
+                {[
+                  e.sku,
+                  e.fishLengthIn != null ? `${e.fishLengthIn}"` : null,
+                  new Date(e.createdAt).toLocaleString(),
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </p>
+              {e.note && <p className="mt-1 text-xs text-ink/55">{e.note}</p>}
+            </div>
+          ))}
+        </div>
       )}
 
       {tab === 'failed' && (
@@ -415,7 +459,8 @@ function OrderCard({
           <div className="flex flex-wrap items-center gap-2">
             <StatusChip status={order.status} />
             <span className="text-xs text-ink/40">
-              {order.productType === 'PLOTTED_ORIGINAL' ? 'Plotted' : 'Giclée'}
+              {productTypeShort(order.productType)}
+              {order.sku ? ` · ${order.sku}` : ''}
               {edition ? ` · ${edition}` : ''}
             </span>
             <span className="text-xs text-ink/40">{money(order.amountCents)}</span>
@@ -431,10 +476,14 @@ function OrderCard({
               order.fishLengthIn != null ? `${order.fishLengthIn}"` : null,
               paper ? `paper ${paper}` : null,
               plot,
+              order.shippingCents ? `ship ${money(order.shippingCents)}` : null,
             ]
               .filter(Boolean)
               .join(' · ')}
           </p>
+          {order.giftNote && (
+            <p className="mt-1 text-xs text-ink/55">Gift note: {order.giftNote}</p>
+          )}
           {order.trackingNumber && (
             <p className="mt-1 text-xs text-ink/55">
               Tracking {order.trackingNumber}
@@ -475,7 +524,9 @@ function OrderCard({
                 Label PDF
               </a>
             )}
-            {order.productType === 'GICLEE' && !order.hasPrint && (
+            {(order.productType === 'GICLEE' ||
+              order.productType === 'GICLEE_FRAMED') &&
+              !order.hasPrint && (
               <button
                 type="button"
                 disabled={busy}

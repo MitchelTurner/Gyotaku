@@ -7,6 +7,7 @@ import {
   IsOptional,
   IsString,
   Max,
+  MaxLength,
   Min,
   MinLength,
 } from 'class-validator';
@@ -33,6 +34,42 @@ export class CreateCheckoutDto {
   @IsOptional()
   @IsEmail()
   email?: string;
+
+  /** Optional gift packaging note (max 200 chars). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  giftNote?: string;
+}
+
+export class JoinWaitlistDto {
+  @IsEmail()
+  email!: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(8)
+  sessionId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(8)
+  renditionId?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(4)
+  @Max(60)
+  fishLengthIn?: number;
+
+  @IsOptional()
+  @IsEnum(ProductType)
+  productType?: ProductType;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  note?: string;
 }
 
 export class UpdateFulfillmentDto {

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   createCheckout,
+  joinWaitlist,
   quoteOrder,
   type ProductType,
   type QuoteResponse,
@@ -24,6 +25,10 @@ function money(cents: number): string {
   }).format(cents / 100)
 }
 
+function productFamily(t: ProductType): 'plotted' | 'giclee' {
+  return t === 'PLOTTED_ORIGINAL' ? 'plotted' : 'giclee'
+}
+
 export function OrderStep({
   rendition,
   fishLengthIn,
@@ -31,30 +36,34 @@ export function OrderStep({
   onBack,
   onStartOver,
 }: Props) {
-  const [productType, setProductType] = useState<ProductType>(
-    initialProductType ?? 'PLOTTED_ORIGINAL',
-  )
-  const [quotes, setQuotes] = useState<Record<ProductType, QuoteResponse | null>>({
-    PLOTTED_ORIGINAL: null,
-    GICLEE: null,
-  })
+  const initialFamily = productFamily(initialProductType ?? 'PLOTTED_ORIGINAL')
+  const [family, setFamily] = useState<'plotted' | 'giclee'>(initialFamily)
+  const [framed, setFramed] = useState(initialProductType === 'GICLEE_FRAMED')
+  const [quotes, setQuotes] = useState<Partial<Record<ProductType, QuoteResponse>>>({})
   const [email, setEmail] = useState('')
+  const [giftNote, setGiftNote] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [waitlistDone, setWaitlistDone] = useState<string | null>(null)
+
+  const productType: ProductType =
+    family === 'plotted' ? 'PLOTTED_ORIGINAL' : framed ? 'GICLEE_FRAMED' : 'GICLEE'
 
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       try {
-        const [plotted, giclee] = await Promise.all([
+        const [plotted, giclee, framedQuote] = await Promise.all([
           quoteOrder('PLOTTED_ORIGINAL', fishLengthIn),
           quoteOrder('GICLEE', fishLengthIn),
+          quoteOrder('GICLEE_FRAMED', fishLengthIn),
         ])
         if (!cancelled) {
-          setQuotes({ PLOTTED_ORIGINAL: plotted, GICLEE: giclee })
-          if (plotted.available === false) {
-            setProductType('GICLEE')
-          }
+          setQuotes({
+            PLOTTED_ORIGINAL: plotted,
+            GICLEE: giclee,
+            GICLEE_FRAMED: framedQuote,
+          })
         }
       } catch (e) {
         if (!cancelled) {
@@ -67,6 +76,13 @@ export function OrderStep({
     }
   }, [fishLengthIn])
 
+  const selected = quotes[productType]
+  const plottedQuote = quotes.PLOTTED_ORIGINAL
+  const gicleeQuote = quotes.GICLEE
+  const framedQuote = quotes.GICLEE_FRAMED
+  const waitlistMode =
+    productType === 'PLOTTED_ORIGINAL' && plottedQuote?.waitlistOpen === true
+
   async function handleCheckout() {
     setBusy(true)
     setError(null)
@@ -78,6 +94,7 @@ export function OrderStep({
         productType,
         fishLengthIn,
         email: email.trim() || undefined,
+        giftNote: giftNote.trim() || undefined,
       })
       window.location.href = res.checkoutUrl
     } catch (e) {
@@ -86,9 +103,39 @@ export function OrderStep({
     }
   }
 
-  const selected = quotes[productType]
+  async function handleWaitlist() {
+    const trimmed = email.trim()
+    if (!trimmed) {
+      setError('Email is required for the waitlist')
+      return
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await joinWaitlist({
+        email: trimmed,
+        sessionId: getSessionId(),
+        renditionId: rendition.id,
+        fishLengthIn,
+        productType: 'PLOTTED_ORIGINAL',
+      })
+      setWaitlistDone(res.message)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not join waitlist')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const paper = formatPaperSize(rendition.paperWidthMm, rendition.paperHeightMm)
   const plot = formatPlotTime(rendition.estPlotSeconds)
+  const frameUpsell =
+    framedQuote && gicleeQuote
+      ? framedQuote.amountCents - gicleeQuote.amountCents
+      : null
+  const payLabel = selected
+    ? money(selected.totalCents ?? selected.amountCents + (selected.shippingCents ?? 0))
+    : null
 
   return (
     <section className="mx-auto flex min-h-dvh w-full max-w-3xl flex-col gap-8 px-4 py-10 sm:px-8">
@@ -106,8 +153,8 @@ export function OrderStep({
       <div>
         <h1 className="font-display text-4xl text-ink sm:text-5xl">Order your print</h1>
         <p className="mt-3 max-w-xl text-sm text-ink/55">
-          Choose a hand-plotted original or a giclée. Checkout collects shipping
-          through Stripe — no account required.
+          Length bands set a clear SKU price. Domestic shipping (US/CA) is a flat
+          add-on at checkout.
           {fishLengthIn != null ? ` Life-size ${fishLengthIn}".` : ''}
         </p>
       </div>
@@ -143,37 +190,79 @@ export function OrderStep({
 
       <div className="grid gap-3 sm:grid-cols-2">
         <ProductCard
-          active={productType === 'PLOTTED_ORIGINAL'}
-          disabled={quotes.PLOTTED_ORIGINAL?.available === false}
+          active={family === 'plotted'}
           title="Plotted original"
           body={
-            quotes.PLOTTED_ORIGINAL?.available === false
-              ? quotes.PLOTTED_ORIGINAL.unavailableReason ||
-                'Temporarily closed — plot queue is full.'
+            plottedQuote?.waitlistOpen
+              ? plottedQuote.unavailableReason ||
+                'Plot queue is full — join the waitlist below.'
               : 'Drawn on an AxiDraw, signed and editioned (limited to 25). The physical ink path of your catch.'
           }
-          price={quotes.PLOTTED_ORIGINAL ? money(quotes.PLOTTED_ORIGINAL.amountCents) : '…'}
-          onClick={() => setProductType('PLOTTED_ORIGINAL')}
+          price={
+            plottedQuote
+              ? `${money(plottedQuote.amountCents)}${
+                  plottedQuote.skuLabel ? ` · ${plottedQuote.skuLabel}` : ''
+                }`
+              : '…'
+          }
+          onClick={() => setFamily('plotted')}
         />
         <ProductCard
-          active={productType === 'GICLEE'}
+          active={family === 'giclee'}
           title="Giclée"
           body="Archival pigment print of the artwork. Faster to fulfill, no hand plotting."
-          price={quotes.GICLEE ? money(quotes.GICLEE.amountCents) : '…'}
-          onClick={() => setProductType('GICLEE')}
+          price={
+            gicleeQuote
+              ? `${money(gicleeQuote.amountCents)}${
+                  gicleeQuote.skuLabel ? ` · ${gicleeQuote.skuLabel}` : ''
+                }`
+              : '…'
+          }
+          onClick={() => setFamily('giclee')}
         />
       </div>
 
-      {quotes.PLOTTED_ORIGINAL?.queueEtaDays != null &&
-        quotes.PLOTTED_ORIGINAL.available !== false && (
+      {family === 'giclee' && framedQuote && (
+        <label className="flex cursor-pointer items-start gap-3 text-sm text-ink/70">
+          <input
+            type="checkbox"
+            checked={framed}
+            onChange={(e) => setFramed(e.target.checked)}
+            className="mt-1"
+          />
+          <span>
+            <span className="font-medium text-ink">Add frame</span>
+            {frameUpsell != null && frameUpsell > 0
+              ? ` (+${money(frameUpsell)})`
+              : ''}
+            {' — '}
+            ready-to-hang framed giclée
+            {framedQuote.sku ? ` · ${framedQuote.sku}` : ''}
+          </span>
+        </label>
+      )}
+
+      {selected?.sku && (
+        <p className="text-xs text-ink/40">
+          SKU {selected.sku}
+          {selected.skuLabel ? ` · ${selected.skuLabel}` : ''}
+          {selected.shippingCents != null
+            ? ` · +${money(selected.shippingCents)} domestic shipping`
+            : ''}
+        </p>
+      )}
+
+      {plottedQuote?.queueEtaDays != null &&
+        plottedQuote.available !== false &&
+        family === 'plotted' && (
           <p className="text-xs text-ink/40">
-            Plot queue ~{quotes.PLOTTED_ORIGINAL.queueEtaDays} days
+            Plot queue ~{plottedQuote.queueEtaDays} days
           </p>
         )}
 
       <label className="block">
         <span className="mb-2 block text-[11px] uppercase tracking-[0.18em] text-ink/40">
-          Email (optional)
+          Email {waitlistMode ? '(required)' : '(optional)'}
         </span>
         <input
           type="email"
@@ -184,26 +273,48 @@ export function OrderStep({
         />
       </label>
 
-      {error && <p className="text-sm text-red-800/80">{error}</p>}
+      {!waitlistMode && (
+        <label className="block">
+          <span className="mb-2 block text-[11px] uppercase tracking-[0.18em] text-ink/40">
+            Gift note (optional)
+          </span>
+          <textarea
+            value={giftNote}
+            onChange={(e) => setGiftNote(e.target.value.slice(0, 200))}
+            rows={2}
+            maxLength={200}
+            placeholder="Short note for gift packaging"
+            className="w-full resize-none rounded-sm border border-ink/15 bg-foam/60 px-3 py-2.5 text-sm text-ink outline-none focus:border-sea"
+          />
+        </label>
+      )}
 
-      <button
-        type="button"
-        disabled={
-          busy ||
-          !selected ||
-          selected.available === false
-        }
-        onClick={handleCheckout}
-        className="w-full rounded-sm bg-sea px-5 py-3.5 text-sm font-medium text-foam transition hover:bg-sea-deep disabled:opacity-50"
-      >
-        {busy
-          ? 'Redirecting to Stripe…'
-          : selected?.available === false
-            ? 'Unavailable'
-            : selected
-              ? `Pay ${money(selected.amountCents)}`
+      {error && <p className="text-sm text-red-800/80">{error}</p>}
+      {waitlistDone && <p className="text-sm text-sea">{waitlistDone}</p>}
+
+      {waitlistMode ? (
+        <button
+          type="button"
+          disabled={busy || Boolean(waitlistDone)}
+          onClick={handleWaitlist}
+          className="w-full rounded-sm bg-sea px-5 py-3.5 text-sm font-medium text-foam transition hover:bg-sea-deep disabled:opacity-50"
+        >
+          {busy ? 'Joining…' : waitlistDone ? 'On the waitlist' : 'Join waitlist'}
+        </button>
+      ) : (
+        <button
+          type="button"
+          disabled={busy || !selected}
+          onClick={handleCheckout}
+          className="w-full rounded-sm bg-sea px-5 py-3.5 text-sm font-medium text-foam transition hover:bg-sea-deep disabled:opacity-50"
+        >
+          {busy
+            ? 'Redirecting to Stripe…'
+            : payLabel
+              ? `Pay ${payLabel}`
               : 'Loading price…'}
-      </button>
+        </button>
+      )}
 
       <button
         type="button"
@@ -218,14 +329,12 @@ export function OrderStep({
 
 function ProductCard({
   active,
-  disabled,
   title,
   body,
   price,
   onClick,
 }: {
   active: boolean
-  disabled?: boolean
   title: string
   body: string
   price: string
@@ -234,14 +343,11 @@ function ProductCard({
   return (
     <button
       type="button"
-      disabled={disabled}
       onClick={onClick}
       className={
-        disabled
-          ? 'rounded-sm border border-ink/10 bg-ink/5 px-4 py-5 text-left text-ink/40'
-          : active
-            ? 'rounded-sm border border-ink bg-ink px-4 py-5 text-left text-foam'
-            : 'rounded-sm border border-ink/10 bg-foam/40 px-4 py-5 text-left text-ink transition hover:border-ink/25'
+        active
+          ? 'rounded-sm border border-ink bg-ink px-4 py-5 text-left text-foam'
+          : 'rounded-sm border border-ink/10 bg-foam/40 px-4 py-5 text-left text-ink transition hover:border-ink/25'
       }
     >
       <p className="font-display text-2xl">{title}</p>

@@ -24,9 +24,14 @@ export type OperatorStatus =
 
 export type OperatorOrder = {
   id: string
-  productType: 'PLOTTED_ORIGINAL' | 'GICLEE'
+  productType: 'PLOTTED_ORIGINAL' | 'GICLEE' | 'GICLEE_FRAMED'
   status: OperatorStatus | string
   amountCents: number
+  productAmountCents?: number | null
+  shippingCents?: number
+  sku?: string | null
+  skuLabel?: string | null
+  giftNote?: string | null
   currency: string
   fishLengthIn: number | null
   editionNumber: number | null
@@ -58,6 +63,23 @@ export type OperatorOrder = {
   previewCleanUrl: string | null
   printUrl: string | null
   hasPrint: boolean
+}
+
+export type WaitlistEntry = {
+  id: string
+  email: string
+  productType: string
+  sku: string | null
+  fishLengthIn: number | null
+  renditionId: string | null
+  note: string | null
+  notifiedAt: string | null
+  createdAt: string
+}
+
+export type WaitlistResponse = {
+  count: number
+  entries: WaitlistEntry[]
 }
 
 export type PlottedAvailability = {
@@ -188,4 +210,8 @@ export function retryRendition(id: string) {
 
 export function getOperatorMetrics(hours = 24) {
   return operatorRequest<OperatorMetrics>(`/operator/metrics?hours=${hours}`)
+}
+
+export function listOperatorWaitlist() {
+  return operatorRequest<WaitlistResponse>('/operator/waitlist')
 }
