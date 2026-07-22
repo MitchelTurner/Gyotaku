@@ -12,3 +12,5 @@ coverage/
 generator/corpus/runs/
 api/node_modules/
 api/dist/
+web/node_modules/
+web/dist/

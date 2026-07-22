@@ -2,33 +2,30 @@
 
 Upload a salmon photo → gyotaku-style pen-plotter artwork → order a hand-plotted original or giclée.
 
-**Current focus: Phase 1** — job queue + preview API around the Phase 0 generator.
+**Current focus: Phase 2** — upload / preview web UI on top of the Phase 1 API.
 
 | Package | Role |
 |---|---|
-| [`generator/`](generator/README.md) | Offline CLI + Python queue worker |
+| [`web/`](web/README.md) | React upload → generate → preview UI |
 | [`api/`](api/README.md) | NestJS upload / rendition preview API |
+| [`generator/`](generator/README.md) | Offline CLI + Python queue worker |
 
 ```bash
-# Generator (Phase 0)
-cd generator && pip install -e ".[dev]"
-gyotaku generate corpus/images/01_fish.jpg -o /tmp/gyotaku-out
-
-# API + worker (Phase 1)
 docker compose up -d
-cd api && cp .env.example .env && npm install && npx prisma migrate deploy && npm run start:dev
-# other terminal:
-cd generator && pip install -e . && pip install -r worker/requirements.txt && python worker/worker.py
+cd api && cp .env.example .env && npm i && npx prisma migrate deploy && npm run start:dev
+cd generator && pip install -e ".[worker]" && python worker/worker.py
+cd web && npm i && npm run dev
 ```
 
-Phases 2–3 (web UI, checkout, fulfillment) come after the preview API is solid.
+Phase 3 (checkout, fulfillment) comes next.
 
 ### Railway
 
-Deploy **two services** from this repo:
+Deploy **three services**:
 
-1. **api** — root directory `api/` (`railpack.json` → NestJS)
-2. **worker** — root directory `generator/` (`railpack.json` → `python worker/worker.py`)
+1. **web** — root directory `web/` (set `VITE_API_URL` to the API origin at build time)
+2. **api** — root directory `api/`
+3. **worker** — root directory `generator/`
 
 Attach Postgres, Redis, and an S3-compatible bucket; set the env vars from `api/.env.example`.
 
