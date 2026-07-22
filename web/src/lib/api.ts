@@ -104,6 +104,64 @@ export function getRendition(id: string) {
   return request<RenditionResponse>(`/renditions/${id}`)
 }
 
+export type ProductType = 'PLOTTED_ORIGINAL' | 'GICLEE'
+
+export type QuoteResponse = {
+  productType: ProductType
+  fishLengthIn: number | null
+  amountCents: number
+  currency: string
+  label: string
+}
+
+export type CheckoutResponse = {
+  orderId: string
+  checkoutUrl: string
+  amountCents: number
+  currency: string
+  productType: ProductType
+}
+
+export type OrderResponse = {
+  id: string
+  renditionId: string
+  productType: ProductType
+  status: string
+  amountCents: number
+  currency: string
+  fishLengthIn: number | null
+  email: string | null
+  trackingNumber: string | null
+  paidAt: string | null
+  createdAt: string
+  previewUrl: string | null
+  estPlotSeconds: number | null
+}
+
+export function quoteOrder(productType: ProductType, fishLengthIn?: number | null) {
+  const q = new URLSearchParams({ productType })
+  if (fishLengthIn != null) q.set('fishLengthIn', String(fishLengthIn))
+  return request<QuoteResponse>(`/orders/quote?${q}`)
+}
+
+export function createCheckout(body: {
+  sessionId: string
+  renditionId: string
+  productType: ProductType
+  fishLengthIn?: number | null
+  email?: string
+}) {
+  return request<CheckoutResponse>('/orders/checkout', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+}
+
+export function getOrder(orderId: string, sessionId: string) {
+  const q = new URLSearchParams({ sessionId })
+  return request<OrderResponse>(`/orders/${orderId}?${q}`)
+}
+
 /** Upload bytes via the API proxy (preferred) or a direct presigned S3 URL. */
 export async function putUploadBytes(
   uploadId: string,

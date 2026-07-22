@@ -28,6 +28,10 @@ Caddy proxies `/api/*` → the API (avoids CORS). The worker URL is not the fron
 ## Flow
 
 1. Upload (client downscales to 2048 long edge)
-2. Presign → S3 PUT → complete
+2. Enter fish length (life-size) or fit to paper
 3. Create rendition, poll stages
-4. Preview with style / density / ink controls (each change enqueues a new rendition)
+4. Preview with style / density / ink / length controls
+5. **Order this print** → plotted original or giclée → Stripe Checkout
+6. Return URLs: `/?order=success|cancel&orderId=…`
+
+Set API `PUBLIC_WEB_URL` to this site’s origin so Stripe redirects work.

@@ -3,7 +3,8 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // rawBody required for Stripe webhook signature verification
+  const app = await NestFactory.create(AppModule, { rawBody: true });
 
   // Always reflect the request Origin. A stale CORS_ORIGINS=http://localhost:5173
   // on Railway was blocking https://gyotaku-web.up.railway.app → "Failed to fetch".

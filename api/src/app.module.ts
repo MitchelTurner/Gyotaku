@@ -5,6 +5,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { StorageModule } from './storage/storage.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { RenditionsModule } from './renditions/renditions.module';
+import { OrdersModule } from './orders/orders.module';
 import { HealthController } from './health.controller';
 import { SessionModule } from './session/session.module';
 
@@ -21,6 +22,7 @@ import { SessionModule } from './session/session.module';
     SessionModule,
     UploadsModule,
     RenditionsModule,
+    OrdersModule,
   ],
   controllers: [HealthController],
 })

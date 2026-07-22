@@ -15,6 +15,7 @@ type Props = {
   regenerating: boolean
   onControlsChange: (next: StyleControls) => void
   onRegenerate: () => void
+  onOrder: () => void
   onStartOver: () => void
 }
 
@@ -24,6 +25,7 @@ export function Preview({
   regenerating,
   onControlsChange,
   onRegenerate,
+  onOrder,
   onStartOver,
 }: Props) {
   const lengthLabel =
@@ -139,8 +141,16 @@ export function Preview({
         <button
           type="button"
           disabled={regenerating}
-          onClick={onRegenerate}
+          onClick={onOrder}
           className="mt-8 w-full rounded-sm bg-sea px-5 py-3.5 text-sm font-medium text-foam transition hover:bg-sea-deep disabled:opacity-50"
+        >
+          Order this print
+        </button>
+        <button
+          type="button"
+          disabled={regenerating}
+          onClick={onRegenerate}
+          className="mt-3 w-full rounded-sm bg-ink/5 px-5 py-3 text-sm font-medium text-ink/80 transition hover:bg-ink/10 disabled:opacity-50"
         >
           {regenerating ? 'Drawing…' : 'Redraw with these settings'}
         </button>

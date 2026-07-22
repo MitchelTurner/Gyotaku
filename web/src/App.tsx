@@ -1,5 +1,7 @@
 import { startTransition, useEffect, useRef, useState } from 'react'
 import { HeroUpload } from './components/HeroUpload'
+import { OrderStatus } from './components/OrderStatus'
+import { OrderStep } from './components/OrderStep'
 import { Preview, type StyleControls } from './components/Preview'
 import { Processing } from './components/Processing'
 import { RejectNotice } from './components/RejectNotice'
@@ -22,6 +24,8 @@ type Phase =
   | { name: 'size'; uploadId: string }
   | { name: 'processing'; renditionId: string; stage: string | null }
   | { name: 'ready'; rendition: RenditionResponse }
+  | { name: 'order'; rendition: RenditionResponse }
+  | { name: 'orderResult'; orderId: string; kind: 'success' | 'cancel' }
   | { name: 'rejected'; rendition: RenditionResponse }
   | { name: 'error'; message: string }
 
@@ -76,14 +80,36 @@ function styleParamsFromControls(c: StyleControls): Record<string, unknown> {
   return params
 }
 
+function readOrderReturn(): { kind: 'success' | 'cancel'; orderId: string } | null {
+  const params = new URLSearchParams(window.location.search)
+  const order = params.get('order')
+  const orderId = params.get('orderId')
+  if ((order === 'success' || order === 'cancel') && orderId) {
+    return { kind: order, orderId }
+  }
+  return null
+}
+
+function clearOrderQuery() {
+  const url = new URL(window.location.href)
+  url.searchParams.delete('order')
+  url.searchParams.delete('orderId')
+  window.history.replaceState({}, '', url.pathname + url.search)
+}
+
 export default function App() {
-  const [phase, setPhase] = useState<Phase>({ name: 'idle' })
+  const [phase, setPhase] = useState<Phase>(() => {
+    const ret = readOrderReturn()
+    if (ret) return { name: 'orderResult', ...ret }
+    return { name: 'idle' }
+  })
   const [error, setError] = useState<string | null>(null)
   const [uploadId, setUploadId] = useState<string | null>(null)
   const [seed, setSeed] = useState(() => Math.floor(Math.random() * 1_000_000_000))
   const [controls, setControls] = useState<StyleControls>(DEFAULT_CONTROLS)
   const [regenerating, setRegenerating] = useState(false)
   const [starting, setStarting] = useState(false)
+  const [lastReady, setLastReady] = useState<RenditionResponse | null>(null)
   const pollRef = useRef<number | null>(null)
 
   useEffect(() => {
@@ -101,7 +127,9 @@ export default function App() {
 
   function resetToIdle() {
     clearPoll()
+    clearOrderQuery()
     setUploadId(null)
+    setLastReady(null)
     setSeed(Math.floor(Math.random() * 1_000_000_000))
     setControls(DEFAULT_CONTROLS)
     setRegenerating(false)
@@ -123,6 +151,7 @@ export default function App() {
         setRegenerating(false)
         setStarting(false)
         if (r.status === 'READY') {
+          setLastReady(r)
           startTransition(() => setPhase({ name: 'ready', rendition: r }))
         } else if (r.status === 'REJECTED') {
           setPhase({ name: 'rejected', rendition: r })
@@ -157,6 +186,7 @@ export default function App() {
     if (rendition.status === 'READY') {
       setRegenerating(false)
       setStarting(false)
+      setLastReady(rendition)
       setPhase({ name: 'ready', rendition })
       return
     }
@@ -265,7 +295,32 @@ export default function App() {
           regenerating={regenerating}
           onControlsChange={setControls}
           onRegenerate={handleRegenerate}
+          onOrder={() => setPhase({ name: 'order', rendition: phase.rendition })}
           onStartOver={resetToIdle}
+        />
+      )}
+
+      {phase.name === 'order' && (
+        <OrderStep
+          rendition={phase.rendition}
+          fishLengthIn={controls.fishLengthIn}
+          onBack={() => setPhase({ name: 'ready', rendition: phase.rendition })}
+          onStartOver={resetToIdle}
+        />
+      )}
+
+      {phase.name === 'orderResult' && (
+        <OrderStatus
+          orderId={phase.orderId}
+          kind={phase.kind}
+          onDone={() => {
+            clearOrderQuery()
+            if (phase.kind === 'cancel' && lastReady) {
+              setPhase({ name: 'ready', rendition: lastReady })
+            } else {
+              resetToIdle()
+            }
+          }}
         />
       )}
 

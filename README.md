@@ -2,7 +2,7 @@
 
 Upload a salmon photo → gyotaku-style pen-plotter artwork → order a hand-plotted original or giclée.
 
-**Current focus: Phase 2** — upload / preview web UI on top of the Phase 1 API.
+**Current focus: Phase 3** — Stripe checkout + operator fulfillment on top of the Phase 2 preview UI.
 
 | Package | Role |
 |---|---|
@@ -17,7 +17,7 @@ cd generator && pip install -e ".[worker]" && python worker/worker.py
 cd web && npm i && npm run dev
 ```
 
-Phase 3 (checkout, fulfillment) comes next.
+Phase 3 adds **Order this print** → Stripe Checkout (plotted original or giclée) and an operator queue at `GET /operator/orders` (header `x-operator-token`).
 
 ### Railway
 

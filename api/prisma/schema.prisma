@@ -37,6 +37,7 @@ model Rendition {
   failureReason  String?
   createdAt      DateTime        @default(now())
   completedAt    DateTime?
+  orders         Order[]
 
   @@index([uploadId])
   @@index([status])
@@ -50,4 +51,53 @@ enum RenditionStatus {
   READY
   FAILED
   REJECTED
+}
+
+model Order {
+  id                    String         @id @default(cuid())
+  sessionId             String
+  renditionId           String
+  rendition             Rendition      @relation(fields: [renditionId], references: [id])
+  productType           ProductType
+  status                OrderStatus    @default(DRAFT)
+  /// Amount charged in cents (USD)
+  amountCents           Int
+  currency              String         @default("usd")
+  fishLengthIn          Float?
+  email                 String?
+  shippingName          String?
+  shippingLine1         String?
+  shippingLine2         String?
+  shippingCity          String?
+  shippingState         String?
+  shippingPostal        String?
+  shippingCountry       String?
+  trackingNumber        String?
+  stripeCheckoutSession String?        @unique
+  stripePaymentIntent   String?
+  paidAt                DateTime?
+  fulfillmentNote       String?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  @@index([sessionId])
+  @@index([status])
+  @@index([productType, status])
+}
+
+enum ProductType {
+  PLOTTED_ORIGINAL
+  GICLEE
+}
+
+enum OrderStatus {
+  DRAFT
+  AWAITING_PAYMENT
+  PAID
+  PLOTTING
+  PRINTING
+  PACKED
+  SHIPPED
+  CANCELLED
+  REFUNDED
 }
