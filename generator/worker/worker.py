@@ -43,13 +43,21 @@ S3_FORCE_PATH_STYLE = os.environ.get("S3_FORCE_PATH_STYLE", "true") == "true"
 
 LOCAL_REDIS_DEFAULT = "redis://localhost:6379"
 
+# Shared with the health HTTP handler (updated as config/connect progresses).
+HEALTH: dict[str, Any] = {
+    "status": "starting",
+    "service": "gyotaku-worker",
+    "message": "starting",
+    "missing": [],
+}
+
 
 def log(msg: str) -> None:
     print(f"[worker] {msg}", flush=True)
 
 
-def resolve_redis_url() -> str:
-    """Prefer REDIS_URL; accept Railway Redis plugin aliases."""
+def peek_redis_url() -> str | None:
+    """Return a Redis URL from env, or None if unset."""
     for key in ("REDIS_URL", "REDIS_PRIVATE_URL", "REDIS_PUBLIC_URL"):
         value = os.environ.get(key, "").strip()
         if value:
@@ -65,26 +73,56 @@ def resolve_redis_url() -> str:
         return f"redis://{host}:{port}"
 
     if os.environ.get("RAILWAY_ENVIRONMENT"):
-        raise SystemExit(
-            "[worker] REDIS_URL is not set. On the worker service, add a variable "
-            "reference to your Redis plugin, e.g. REDIS_URL=${{Redis.REDIS_URL}} "
-            "(or REDIS_PRIVATE_URL). Localhost will not work inside Railway."
-        )
+        return None
     return LOCAL_REDIS_DEFAULT
 
 
-def connect_redis(url: str, *, attempts: int = 30, delay_sec: float = 2.0) -> redis.Redis:
-    last_err: Exception | None = None
-    for attempt in range(1, attempts + 1):
+REDIS_SETUP_HINT = (
+    "On the worker service → Variables → New Variable → "
+    "Variable Reference → pick your Redis service's REDIS_URL "
+    "(or set REDIS_URL=${{Redis.REDIS_URL}} using your Redis service name). "
+    "Also set DATABASE_URL the same way from Postgres. Redeploy after saving."
+)
+
+
+def require_or_wait(label: str, value: str | None, hint: str) -> str:
+    """If value is missing, stay alive with a health error (no crash loop).
+
+    Railway injects Variables at process start — after you add them, redeploy.
+    """
+    if value:
+        return value
+    HEALTH.update(
+        {
+            "status": "misconfigured",
+            "message": f"{label} is not set on this service",
+            "missing": sorted(set([*HEALTH.get("missing", []), label])),
+            "hint": hint,
+        }
+    )
+    log(f"{label} is not set. {hint} Waiting (redeploy after adding Variables)…")
+    while True:
+        time.sleep(60)
+
+
+def connect_redis(url: str, *, delay_sec: float = 2.0) -> redis.Redis:
+    """Retry forever until Redis accepts connections."""
+    attempt = 0
+    while True:
+        attempt += 1
         try:
             client = redis.from_url(url, decode_responses=True, socket_connect_timeout=5)
             client.ping()
             return client
         except Exception as e:
-            last_err = e
-            log(f"redis connect attempt {attempt}/{attempts} failed: {e}")
+            HEALTH.update(
+                {
+                    "status": "waiting_for_redis",
+                    "message": f"cannot connect to redis: {e}",
+                }
+            )
+            log(f"redis connect attempt {attempt} failed: {e}")
             time.sleep(delay_sec)
-    raise SystemExit(f"[worker] could not connect to redis at {url}: {last_err}")
 
 
 def start_health_server() -> None:
@@ -99,16 +137,14 @@ def start_health_server() -> None:
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:  # noqa: N802
-            body = {
-                "status": "ok",
-                "service": "gyotaku-worker",
-                "message": "Queue worker is up. Use the web service URL for the app UI.",
-            }
-            payload = json.dumps(body).encode("utf-8")
-            code = 200 if self.path in ("/", "/health", "/healthz") else 404
-            if code == 404:
+            if self.path not in ("/", "/health", "/healthz"):
                 payload = b'{"error":"not_found"}'
-            self.send_response(code)
+                self.send_response(404)
+            else:
+                body = dict(HEALTH)
+                payload = json.dumps(body).encode("utf-8")
+                code = 200 if body.get("status") == "ok" else 503
+                self.send_response(code)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
@@ -278,7 +314,13 @@ def process_job(job: dict[str, Any]) -> None:
 def main() -> None:
     start_health_server()
 
-    redis_url = resolve_redis_url()
+    require_or_wait(
+        "DATABASE_URL",
+        DATABASE_URL.strip() or None,
+        "Worker Variables → Add Reference → Postgres → DATABASE_URL, then redeploy.",
+    )
+    redis_url = require_or_wait("REDIS_URL", peek_redis_url(), REDIS_SETUP_HINT)
+
     # Avoid logging passwords
     safe_redis = redis_url
     try:
@@ -289,18 +331,22 @@ def main() -> None:
         pass
 
     log(f"starting; redis={safe_redis} queue={QUEUE_KEY} bucket={S3_BUCKET}")
-    if not DATABASE_URL:
-        raise SystemExit(
-            "[worker] DATABASE_URL is not set. Reference Postgres on the worker "
-            "service, e.g. DATABASE_URL=${{Postgres.DATABASE_URL}}"
-        )
     try:
         parsed = urlparse(DATABASE_URL)
         log(f"database host={parsed.hostname}")
     except Exception:
         pass
 
+    HEALTH.update({"status": "connecting", "message": "connecting to redis", "missing": []})
     r = connect_redis(redis_url)
+    HEALTH.update(
+        {
+            "status": "ok",
+            "message": "Queue worker is up. Use the web service URL for the app UI.",
+            "missing": [],
+            "hint": None,
+        }
+    )
     log("redis ok; waiting for jobs")
 
     while True:

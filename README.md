@@ -31,14 +31,16 @@ Attach Postgres, Redis, and an S3-compatible bucket; set the env vars from `api/
 
 **Open the web service URL** for the UI. The worker URL only returns a JSON health check — it is not the app.
 
-**Worker must get the same Redis/Postgres/S3 vars as the API** (sharing is not automatic). On the worker service Variables tab, add references such as:
+**Worker Variables are separate from the API** — linking Redis to the project is not enough; each service needs its own references:
 
-```
-DATABASE_URL=${{Postgres.DATABASE_URL}}
-REDIS_URL=${{Redis.REDIS_URL}}
-```
+1. Open the **worker** service (not Redis, not API)
+2. **Variables** → **+ New Variable** → **Add Reference**
+3. Select your Redis service → `REDIS_URL` (name the variable `REDIS_URL`)
+4. Repeat for Postgres → `DATABASE_URL`
+5. Copy the same `S3_*` values you use on the API
+6. Redeploy the worker
 
-plus your `S3_*` values. If `REDIS_URL` is missing, the worker falls back to `localhost:6379` and crash-loops.
+If the Redis service is named something other than `Redis`, the reference uses that name (Railway shows it in the picker). Worker `/health` returns `503` with `"missing":["REDIS_URL"]` until this is set.
 
 On **web**, set `VITE_API_URL=https://<your-api-service>.up.railway.app` (no trailing slash) before/at build. On **api**, set `CORS_ORIGINS` to the web origin.
 
