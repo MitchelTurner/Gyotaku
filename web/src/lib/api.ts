@@ -200,11 +200,23 @@ export function createCheckout(body: {
   productType: ProductType
   fishLengthIn?: number | null
   email?: string
+  affiliateCode?: string
 }) {
   return request<CheckoutResponse>('/orders/checkout', {
     method: 'POST',
     body: JSON.stringify(body),
   })
+}
+
+export type AffiliatePublic = {
+  code: string
+  name: string
+  boatName: string | null
+  referralUrl: string
+}
+
+export function getAffiliate(code: string) {
+  return request<AffiliatePublic>(`/affiliates/${encodeURIComponent(code)}`)
 }
 
 export function getOrder(orderId: string, sessionId: string) {

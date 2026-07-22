@@ -1,7 +1,10 @@
+import type { AffiliatePublic } from '../lib/api'
+
 type Props = {
   busy: boolean
   error: string | null
   onFile: (file: File) => void
+  affiliate?: AffiliatePublic | null
 }
 
 const TIPS = [
@@ -10,7 +13,7 @@ const TIPS = [
   { title: 'Sharp & bright', body: 'Hold steady; avoid dusk blur and heavy shade.' },
 ]
 
-export function HeroUpload({ busy, error, onFile }: Props) {
+export function HeroUpload({ busy, error, onFile, affiliate }: Props) {
   return (
     <section className="flex min-h-dvh flex-col justify-end px-5 pb-10 pt-8 sm:px-10 sm:pb-14">
       <header className="animate-rise mb-auto flex items-baseline justify-between gap-4">
@@ -32,6 +35,12 @@ export function HeroUpload({ busy, error, onFile }: Props) {
           Upload a fish photo. We isolate the specimen and draw it as
           plotter-ready strokes — tone from mark density, floating on paper.
         </p>
+        {affiliate && (
+          <p className="animate-rise-delay-2 mt-3 text-sm text-sea-deep/80">
+            With {affiliate.name}
+            {affiliate.boatName ? ` · ${affiliate.boatName}` : ''}
+          </p>
+        )}
 
         <label className="animate-rise-delay-2 group mt-9 flex cursor-pointer flex-col items-start gap-3">
           <span className="inline-flex items-center gap-3 rounded-sm bg-ink px-6 py-3.5 text-sm font-medium tracking-wide text-foam transition duration-300 group-hover:bg-sea-deep group-active:scale-[0.98]">

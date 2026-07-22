@@ -2,17 +2,19 @@ import { useEffect, useState } from 'react'
 import {
   createCheckout,
   quoteOrder,
+  type AffiliatePublic,
   type ProductType,
   type QuoteResponse,
   type RenditionResponse,
 } from '../lib/api'
 import { formatPaperSize, formatPlotTime } from '../lib/format'
-import { getSessionId } from '../lib/session'
+import { getAffiliateCode, getSessionId } from '../lib/session'
 
 type Props = {
   rendition: RenditionResponse
   fishLengthIn: number | null
   initialProductType?: ProductType
+  affiliate?: AffiliatePublic | null
   onBack: () => void
   onStartOver: () => void
 }
@@ -28,6 +30,7 @@ export function OrderStep({
   rendition,
   fishLengthIn,
   initialProductType,
+  affiliate,
   onBack,
   onStartOver,
 }: Props) {
@@ -72,12 +75,14 @@ export function OrderStep({
     setError(null)
     try {
       const sessionId = getSessionId()
+      const affiliateCode = getAffiliateCode() || undefined
       const res = await createCheckout({
         sessionId,
         renditionId: rendition.id,
         productType,
         fishLengthIn,
         email: email.trim() || undefined,
+        affiliateCode,
       })
       window.location.href = res.checkoutUrl
     } catch (e) {
@@ -110,6 +115,12 @@ export function OrderStep({
           through Stripe — no account required.
           {fishLengthIn != null ? ` Life-size ${fishLengthIn}".` : ''}
         </p>
+        {affiliate && (
+          <p className="mt-2 text-sm text-sea-deep/80">
+            Referred by {affiliate.name}
+            {affiliate.boatName ? ` · ${affiliate.boatName}` : ''}
+          </p>
+        )}
       </div>
 
       {rendition.previewUrl && (

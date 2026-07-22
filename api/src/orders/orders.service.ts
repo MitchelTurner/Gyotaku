@@ -11,6 +11,8 @@ import Redis from 'ioredis';
 import Stripe from 'stripe';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
+import { AffiliatesService } from './affiliates.service';
+import { commissionCents } from './commission';
 import { CreateCheckoutDto, UpdateFulfillmentDto } from './dto';
 import { PYTHON_JOB_QUEUE, type PrintJobPayload } from './print-jobs';
 import { priceCents, productLabel } from './pricing';
@@ -37,6 +39,7 @@ export class OrdersService implements OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
+    private readonly affiliates: AffiliatesService,
   ) {
     const key = process.env.STRIPE_SECRET_KEY;
     this.stripe = key ? new Stripe(key) : null;
@@ -144,6 +147,11 @@ export class OrdersService implements OnModuleDestroy {
       (typeof style.fish_length_in === 'number' ? style.fish_length_in : null);
     const amountCents = priceCents(dto.productType, fishLengthIn);
 
+    const affiliate = await this.affiliates.findActiveByCode(dto.affiliateCode);
+    const earnedCommission = affiliate
+      ? commissionCents(amountCents, affiliate.commissionBps)
+      : 0;
+
     const order = await this.prisma.order.create({
       data: {
         sessionId: dto.sessionId,
@@ -153,6 +161,8 @@ export class OrdersService implements OnModuleDestroy {
         amountCents,
         fishLengthIn: fishLengthIn ?? undefined,
         email: dto.email,
+        affiliateId: affiliate?.id,
+        commissionCents: earnedCommission > 0 ? earnedCommission : undefined,
       },
     });
 
@@ -170,6 +180,13 @@ export class OrdersService implements OnModuleDestroy {
         renditionId: rendition.id,
         productType: dto.productType,
         sessionId: dto.sessionId,
+        ...(affiliate
+          ? {
+              affiliateId: affiliate.id,
+              affiliateCode: affiliate.code,
+              commissionCents: String(earnedCommission),
+            }
+          : {}),
       },
       line_items: [
         {
@@ -203,6 +220,8 @@ export class OrdersService implements OnModuleDestroy {
       amountCents,
       currency: 'usd',
       productType: dto.productType,
+      affiliateCode: affiliate?.code ?? null,
+      commissionCents: earnedCommission > 0 ? earnedCommission : null,
     };
   }
 
@@ -376,7 +395,10 @@ export class OrdersService implements OnModuleDestroy {
 
     const orders = await this.prisma.order.findMany({
       where,
-      include: { rendition: true },
+      include: {
+        rendition: true,
+        affiliate: { select: { id: true, code: true, name: true } },
+      },
       orderBy: { paidAt: 'asc' },
       take: 100,
     });
@@ -554,6 +576,9 @@ export class OrdersService implements OnModuleDestroy {
     editionNumber: number | null;
     editionSize: number | null;
     email: string | null;
+    affiliateId?: string | null;
+    commissionCents?: number | null;
+    commissionPaidAt?: Date | null;
     shippingName: string | null;
     shippingLine1: string | null;
     shippingLine2: string | null;
@@ -580,6 +605,11 @@ export class OrdersService implements OnModuleDestroy {
       seed: number;
       styleParams: unknown;
     };
+    affiliate?: {
+      id: string;
+      code: string;
+      name: string;
+    } | null;
   }) {
     const svgUrl = order.rendition.svgKey
       ? await this.storage.presignGet(order.rendition.svgKey, 3600 * 6)
@@ -604,6 +634,15 @@ export class OrdersService implements OnModuleDestroy {
       editionNumber: order.editionNumber,
       editionSize: order.editionSize,
       email: order.email,
+      affiliate: order.affiliate
+        ? {
+            id: order.affiliate.id,
+            code: order.affiliate.code,
+            name: order.affiliate.name,
+          }
+        : null,
+      commissionCents: order.commissionCents ?? null,
+      commissionPaidAt: order.commissionPaidAt ?? null,
       shipping: {
         name: order.shippingName,
         line1: order.shippingLine1,

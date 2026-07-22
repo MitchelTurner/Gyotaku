@@ -13,12 +13,21 @@ import {
 import { OrderStatus, ProductType } from '@prisma/client';
 import type { RawBodyRequest } from '@nestjs/common';
 import type { Request } from 'express';
-import { CreateCheckoutDto, UpdateFulfillmentDto } from './dto';
+import { AffiliatesService } from './affiliates.service';
+import {
+  CreateAffiliateDto,
+  CreateCheckoutDto,
+  MarkAffiliatePaidDto,
+  UpdateFulfillmentDto,
+} from './dto';
 import { OrdersService } from './orders.service';
 
 @Controller()
 export class OrdersController {
-  constructor(private readonly orders: OrdersService) {}
+  constructor(
+    private readonly orders: OrdersService,
+    private readonly affiliates: AffiliatesService,
+  ) {}
 
   @Get('orders/quote')
   quote(
@@ -38,6 +47,12 @@ export class OrdersController {
   @Post('orders/checkout')
   checkout(@Body() body: CreateCheckoutDto) {
     return this.orders.createCheckout(body);
+  }
+
+  /** Public: resolve captain QR code for guest UI. */
+  @Get('affiliates/:code')
+  resolveAffiliate(@Param('code') code: string) {
+    return this.affiliates.resolvePublic(code);
   }
 
   @Get('orders/:id')
@@ -108,6 +123,31 @@ export class OrdersController {
   ) {
     assertOperator(token);
     return this.orders.requestPrint(id);
+  }
+
+  @Get('operator/affiliates')
+  listAffiliates(@Headers('x-operator-token') token: string | undefined) {
+    assertOperator(token);
+    return this.affiliates.list();
+  }
+
+  @Post('operator/affiliates')
+  createAffiliate(
+    @Headers('x-operator-token') token: string | undefined,
+    @Body() body: CreateAffiliateDto,
+  ) {
+    assertOperator(token);
+    return this.affiliates.create(body);
+  }
+
+  @Post('operator/affiliates/:id/mark-paid')
+  markAffiliatePaid(
+    @Headers('x-operator-token') token: string | undefined,
+    @Param('id') id: string,
+    @Body() body: MarkAffiliatePaidDto,
+  ) {
+    assertOperator(token);
+    return this.affiliates.markPaid(id, body);
   }
 }
 

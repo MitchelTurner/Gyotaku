@@ -32,6 +32,9 @@ export type OperatorOrder = {
   editionNumber: number | null
   editionSize: number | null
   email: string | null
+  affiliate?: { id: string; code: string; name: string } | null
+  commissionCents?: number | null
+  commissionPaidAt?: string | null
   shipping: {
     name: string | null
     line1: string | null
@@ -188,4 +191,52 @@ export function retryRendition(id: string) {
 
 export function getOperatorMetrics(hours = 24) {
   return operatorRequest<OperatorMetrics>(`/operator/metrics?hours=${hours}`)
+}
+
+export type OperatorAffiliate = {
+  id: string
+  code: string
+  name: string
+  email: string | null
+  boatName: string | null
+  commissionBps: number
+  commissionPercent: number
+  active: boolean
+  note: string | null
+  createdAt: string
+  referralUrl: string
+  qrImageUrl: string
+  owedCents: number
+  paidCents: number
+  orderCount: number
+}
+
+export type AffiliatesResponse = {
+  affiliates: OperatorAffiliate[]
+  totalOwedCents: number
+}
+
+export function listOperatorAffiliates() {
+  return operatorRequest<AffiliatesResponse>('/operator/affiliates')
+}
+
+export function createOperatorAffiliate(body: {
+  name: string
+  code?: string
+  email?: string
+  boatName?: string
+  commissionBps?: number
+  note?: string
+}) {
+  return operatorRequest<OperatorAffiliate>('/operator/affiliates', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+}
+
+export function markAffiliatePaid(id: string) {
+  return operatorRequest<{ affiliateId: string; marked: number }>(
+    `/operator/affiliates/${id}/mark-paid`,
+    { method: 'POST', body: JSON.stringify({}) },
+  )
 }

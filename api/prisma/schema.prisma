@@ -72,6 +72,13 @@ model Order {
   editionNumber         Int?
   editionSize           Int?
   email                 String?
+  /// Captain affiliate who referred this guest (QR ?ref=)
+  affiliateId           String?
+  affiliate             Affiliate?     @relation(fields: [affiliateId], references: [id])
+  /// Captain commission in cents (from product amount)
+  commissionCents       Int?
+  /// When the operator paid this commission to the captain
+  commissionPaidAt      DateTime?
   shippingName          String?
   shippingLine1         String?
   shippingLine2         String?
@@ -94,7 +101,27 @@ model Order {
   @@index([sessionId])
   @@index([status])
   @@index([productType, status])
+  @@index([affiliateId])
   @@unique([productType, editionNumber])
+}
+
+/// Fishing captain (or guide) affiliate — guests scan QR with ?ref=code
+model Affiliate {
+  id            String   @id @default(cuid())
+  /// URL slug for QR links, e.g. capt-mike
+  code          String   @unique
+  name          String
+  email         String?
+  boatName      String?
+  /// Commission in basis points of product amount (1000 = 10%)
+  commissionBps Int      @default(1000)
+  active        Boolean  @default(true)
+  note          String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  orders        Order[]
+
+  @@index([active])
 }
 
 /// Monotonic counter for plotted-original edition numbers

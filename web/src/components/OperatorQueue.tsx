@@ -2,23 +2,27 @@ import { useCallback, useEffect, useState } from 'react'
 import { formatPaperSize, formatPlotTime } from '../lib/format'
 import {
   clearOperatorToken,
+  createOperatorAffiliate,
   createOperatorLabel,
   getOperatorMetrics,
   getOperatorToken,
   listFailedRenditions,
+  listOperatorAffiliates,
   listOperatorOrders,
+  markAffiliatePaid,
   patchOperatorOrder,
   requestOperatorPrint,
   retryRendition,
   setOperatorToken,
   type FailedRendition,
+  type OperatorAffiliate,
   type OperatorMetrics,
   type OperatorOrder,
   type OperatorStatus,
   type PlottedAvailability,
 } from '../lib/operatorApi'
 
-type Tab = 'orders' | 'failed' | 'metrics'
+type Tab = 'orders' | 'failed' | 'metrics' | 'affiliates'
 
 const STATUS_FLOW: OperatorStatus[] = [
   'PAID',
@@ -51,6 +55,15 @@ export function OperatorQueue() {
   const [failed, setFailed] = useState<FailedRendition[]>([])
   const [deadLetterDepth, setDeadLetterDepth] = useState(0)
   const [metrics, setMetrics] = useState<OperatorMetrics | null>(null)
+  const [affiliates, setAffiliates] = useState<OperatorAffiliate[]>([])
+  const [totalOwedCents, setTotalOwedCents] = useState(0)
+  const [newCaptain, setNewCaptain] = useState({
+    name: '',
+    boatName: '',
+    email: '',
+    code: '',
+    commissionPercent: '10',
+  })
   const [filter, setFilter] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -66,6 +79,10 @@ export function OperatorQueue() {
         const res = await listFailedRenditions()
         setFailed(res.failed)
         setDeadLetterDepth(res.deadLetterDepth)
+      } else if (tab === 'affiliates') {
+        const res = await listOperatorAffiliates()
+        setAffiliates(res.affiliates)
+        setTotalOwedCents(res.totalOwedCents)
       } else {
         setMetrics(await getOperatorMetrics(24))
       }
@@ -95,7 +112,52 @@ export function OperatorQueue() {
     setOrders([])
     setFailed([])
     setMetrics(null)
+    setAffiliates([])
     setAvailability(null)
+  }
+
+  async function handleCreateAffiliate(e: React.FormEvent) {
+    e.preventDefault()
+    setBusyId('create-aff')
+    setError(null)
+    try {
+      const pct = Number(newCaptain.commissionPercent)
+      const commissionBps = Number.isFinite(pct)
+        ? Math.round(pct * 100)
+        : undefined
+      await createOperatorAffiliate({
+        name: newCaptain.name.trim(),
+        boatName: newCaptain.boatName.trim() || undefined,
+        email: newCaptain.email.trim() || undefined,
+        code: newCaptain.code.trim() || undefined,
+        commissionBps,
+      })
+      setNewCaptain({
+        name: '',
+        boatName: '',
+        email: '',
+        code: '',
+        commissionPercent: '10',
+      })
+      await refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create captain')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function handleMarkPaid(id: string) {
+    setBusyId(id)
+    setError(null)
+    try {
+      await markAffiliatePaid(id)
+      await refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not mark paid')
+    } finally {
+      setBusyId(null)
+    }
   }
 
   async function handleRetry(id: string) {
@@ -198,6 +260,7 @@ export function OperatorQueue() {
         {(
           [
             ['orders', 'Fulfillment'],
+            ['affiliates', 'Captains'],
             ['failed', 'Failed jobs'],
             ['metrics', 'Metrics'],
           ] as const
@@ -277,6 +340,129 @@ export function OperatorQueue() {
             ))}
           </ul>
         </>
+      )}
+
+      {tab === 'affiliates' && (
+        <div className="mt-8 space-y-8">
+          <p className="text-sm text-ink/55">
+            Create a captain, print their QR, guests scan → order → captain earns
+            a cut. Total owed: {money(totalOwedCents)}.
+          </p>
+
+          <form
+            onSubmit={(e) => void handleCreateAffiliate(e)}
+            className="grid gap-3 sm:grid-cols-2"
+          >
+            <input
+              required
+              value={newCaptain.name}
+              onChange={(e) =>
+                setNewCaptain((s) => ({ ...s, name: e.target.value }))
+              }
+              placeholder="Captain name"
+              className="rounded-sm border border-ink/15 bg-foam/60 px-3 py-2 text-sm outline-none focus:border-sea"
+            />
+            <input
+              value={newCaptain.boatName}
+              onChange={(e) =>
+                setNewCaptain((s) => ({ ...s, boatName: e.target.value }))
+              }
+              placeholder="Boat name (optional)"
+              className="rounded-sm border border-ink/15 bg-foam/60 px-3 py-2 text-sm outline-none focus:border-sea"
+            />
+            <input
+              type="email"
+              value={newCaptain.email}
+              onChange={(e) =>
+                setNewCaptain((s) => ({ ...s, email: e.target.value }))
+              }
+              placeholder="Email (optional)"
+              className="rounded-sm border border-ink/15 bg-foam/60 px-3 py-2 text-sm outline-none focus:border-sea"
+            />
+            <input
+              value={newCaptain.code}
+              onChange={(e) =>
+                setNewCaptain((s) => ({ ...s, code: e.target.value }))
+              }
+              placeholder="Code (optional, e.g. capt-mike)"
+              className="rounded-sm border border-ink/15 bg-foam/60 px-3 py-2 text-sm outline-none focus:border-sea"
+            />
+            <label className="flex items-center gap-2 text-sm text-ink/60">
+              <span className="shrink-0">Commission %</span>
+              <input
+                value={newCaptain.commissionPercent}
+                onChange={(e) =>
+                  setNewCaptain((s) => ({
+                    ...s,
+                    commissionPercent: e.target.value,
+                  }))
+                }
+                className="w-20 rounded-sm border border-ink/15 bg-foam/60 px-2 py-2 text-sm outline-none focus:border-sea"
+              />
+            </label>
+            <button
+              type="submit"
+              disabled={busyId === 'create-aff' || !newCaptain.name.trim()}
+              className="rounded-sm bg-ink px-4 py-2 text-sm font-medium text-foam disabled:opacity-50"
+            >
+              {busyId === 'create-aff' ? 'Creating…' : 'Add captain'}
+            </button>
+          </form>
+
+          <ul className="space-y-8">
+            {affiliates.length === 0 && (
+              <li className="text-sm text-ink/45">No captains yet.</li>
+            )}
+            {affiliates.map((a) => (
+              <li
+                key={a.id}
+                className="flex flex-col gap-4 border-t border-ink/10 pt-6 sm:flex-row"
+              >
+                <div className="shrink-0">
+                  <img
+                    src={a.qrImageUrl}
+                    alt={`QR for ${a.code}`}
+                    className="h-40 w-40 bg-foam object-contain ring-1 ring-ink/10"
+                  />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="font-display text-2xl text-ink">{a.name}</p>
+                  <p className="mt-1 text-sm text-ink/60">
+                    {[a.boatName, a.code, `${a.commissionPercent}%`]
+                      .filter(Boolean)
+                      .join(' · ')}
+                    {!a.active ? ' · inactive' : ''}
+                  </p>
+                  <p className="mt-2 break-all font-mono text-xs text-ink/45">
+                    {a.referralUrl}
+                  </p>
+                  <p className="mt-2 text-sm text-ink/70">
+                    Owed {money(a.owedCents)} · paid {money(a.paidCents)} ·{' '}
+                    {a.orderCount} orders
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <a
+                      href={a.referralUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded-sm bg-ink/5 px-3 py-2 text-xs font-medium text-ink/80"
+                    >
+                      Open link
+                    </a>
+                    <button
+                      type="button"
+                      disabled={busyId === a.id || a.owedCents <= 0}
+                      onClick={() => void handleMarkPaid(a.id)}
+                      className="rounded-sm bg-sea px-3 py-2 text-xs font-medium text-foam hover:bg-sea-deep disabled:opacity-50"
+                    >
+                      {busyId === a.id ? 'Saving…' : 'Mark commissions paid'}
+                    </button>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       {tab === 'failed' && (
@@ -428,6 +614,14 @@ function OrderCard({
           <p className="mt-1 text-xs text-ink/40">
             {[
               order.email,
+              order.affiliate
+                ? `capt ${order.affiliate.name} (${order.affiliate.code})`
+                : null,
+              order.commissionCents
+                ? `comm ${money(order.commissionCents)}${
+                    order.commissionPaidAt ? ' paid' : ''
+                  }`
+                : null,
               order.fishLengthIn != null ? `${order.fishLengthIn}"` : null,
               paper ? `paper ${paper}` : null,
               plot,

@@ -15,9 +15,11 @@ import { clampFishLength } from './components/FishSize'
 import {
   completeUpload,
   createRendition,
+  getAffiliate,
   getRendition,
   presignUpload,
   putUploadBytes,
+  type AffiliatePublic,
   type ProductType,
   type ReorderRecipe,
   type RenditionResponse,
@@ -31,7 +33,11 @@ import {
   saveSeed,
 } from './lib/controls'
 import { prepareUploadFile } from './lib/image'
-import { getSessionId } from './lib/session'
+import {
+  getAffiliateCode,
+  getSessionId,
+  setAffiliateCode,
+} from './lib/session'
 
 type CompareSlot = {
   strategy: StrategyName
@@ -147,6 +153,12 @@ function readShareId(): string | null {
   return params.get('p')
 }
 
+function readAffiliateRef(): string | null {
+  const params = new URLSearchParams(window.location.search)
+  const ref = params.get('ref')
+  return ref && ref.trim() ? ref.trim() : null
+}
+
 function clearOrderQuery() {
   const url = new URL(window.location.href)
   url.searchParams.delete('order')
@@ -160,7 +172,22 @@ function clearShareQuery() {
   window.history.replaceState({}, '', url.pathname + url.search)
 }
 
+function clearAffiliateQuery() {
+  const url = new URL(window.location.href)
+  url.searchParams.delete('ref')
+  window.history.replaceState({}, '', url.pathname + url.search)
+}
+
+/** Capture captain QR ?ref= on any entry URL. */
+function captureAffiliateRef() {
+  const ref = readAffiliateRef()
+  if (!ref) return
+  setAffiliateCode(ref)
+  clearAffiliateQuery()
+}
+
 function initialPhase(): Phase {
+  captureAffiliateRef()
   const ret = readOrderReturn()
   if (ret) return { name: 'orderResult', ...ret }
   const shareId = readShareId()
@@ -177,11 +204,32 @@ export default function App() {
   const [regenerating, setRegenerating] = useState(false)
   const [starting, setStarting] = useState(false)
   const [lastReady, setLastReady] = useState<RenditionResponse | null>(null)
+  const [affiliate, setAffiliate] = useState<AffiliatePublic | null>(null)
   const pollRef = useRef<number | null>(null)
 
   useEffect(() => {
     return () => {
       if (pollRef.current) window.clearInterval(pollRef.current)
+    }
+  }, [])
+
+  // Resolve captain from sticky ?ref= code for guest UI + checkout attribution
+  useEffect(() => {
+    const code = getAffiliateCode()
+    if (!code) {
+      setAffiliate(null)
+      return
+    }
+    let cancelled = false
+    void getAffiliate(code)
+      .then((a) => {
+        if (!cancelled) setAffiliate(a)
+      })
+      .catch(() => {
+        if (!cancelled) setAffiliate(null)
+      })
+    return () => {
+      cancelled = true
     }
   }, [])
 
@@ -472,6 +520,7 @@ export default function App() {
           busy={phase.name === 'uploading'}
           error={error}
           onFile={handleFile}
+          affiliate={affiliate}
         />
       )}
 
@@ -532,6 +581,7 @@ export default function App() {
             controls.fishLengthIn ?? phase.rendition.fishLengthIn ?? null
           }
           initialProductType={phase.preferProduct}
+          affiliate={affiliate}
           onBack={() => setPhase({ name: 'ready', rendition: phase.rendition })}
           onStartOver={resetToIdle}
         />

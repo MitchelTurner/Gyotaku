@@ -75,7 +75,8 @@ Every artwork stores its **seed + settings**, so a reprint or re-plot is identic
 
 ### For the operator
 
-- Open **`/operator`** on the web app (token = `OPERATOR_TOKEN`): fulfillment, failed-job retry, metrics.
+- Open **`/operator`** on the web app (token = `OPERATOR_TOKEN`): fulfillment, captains/affiliates, failed-job retry, metrics.
+- **Captain affiliates:** create a captain under Ops → Captains, print their QR (`/?ref=code`). Guests scan → order; captain earns a % of the product (default 10%). Mark commissions paid when you settle up.
 - Originals stay limited; if plot-queue ETA exceeds `PLOTTED_QUEUE_MAX_DAYS`, that tier closes automatically.
 - Paid giclées enqueue a 300 DPI `printKey` for POD handoff.
 - Optional EasyPost/Shippo: **Buy label + ship** writes tracking and marks SHIPPED.

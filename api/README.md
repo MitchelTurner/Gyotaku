@@ -13,7 +13,11 @@ NestJS API: upload → enqueue generation → poll watermarked preview → Strip
 | `POST` | `/renditions` | Enqueue generation |
 | `GET` | `/renditions/:id` | Poll status / preview URL |
 | `GET` | `/orders/quote` | Price for product + fish length |
-| `POST` | `/orders/checkout` | Create Stripe Checkout session |
+| `POST` | `/orders/checkout` | Create Stripe Checkout session (optional `affiliateCode`) |
+| `GET` | `/affiliates/:code` | Public captain lookup for QR landing |
+| `GET` | `/operator/affiliates` | List captains + owed commissions |
+| `POST` | `/operator/affiliates` | Create captain (returns QR URL) |
+| `POST` | `/operator/affiliates/:id/mark-paid` | Mark unpaid commissions paid |
 | `GET` | `/orders/:id` | Order status (session-scoped) |
 | `POST` | `/webhooks/stripe` | Stripe webhook (raw body) |
 | `GET` | `/operator/orders` | Fulfillment queue (`x-operator-token`) |
@@ -26,7 +30,7 @@ NestJS API: upload → enqueue generation → poll watermarked preview → Strip
 | `POST` | `/operator/renditions/:id/retry` | Re-queue a failed rendition |
 | `GET` | `/operator/metrics` | p50/p95 generate time, reject/fail rates |
 
-Operator UI: open `/operator` on the web app and paste `OPERATOR_TOKEN` (tabs: Fulfillment / Failed jobs / Metrics).
+Operator UI: open `/operator` on the web app and paste `OPERATOR_TOKEN` (tabs: Fulfillment / Captains / Failed jobs / Metrics).
 
 Rate limits (per `sessionId`): **10 uploads/hour**, **30 renditions/hour**.
 
