@@ -1,0 +1,129 @@
+{
+  "version": 1,
+  "matteAbsTol": 0.12,
+  "pathRelTol": 0.35,
+  "seed": 0,
+  "note": "Status expectations from SOURCES.json; metrics seeded from salmon-v2. Re-run `gyotaku corpus --write-baseline` after intentional quality changes.",
+  "images": [
+    {
+      "image": "01_fish_side.jpg",
+      "status": "READY",
+      "matteScore": 0.7082548478512619,
+      "pathCount": 1387
+    },
+    {
+      "image": "02_fish_held.jpg",
+      "status": "READY",
+      "matteScore": 0.6431897277120167,
+      "pathCount": 1670
+    },
+    {
+      "image": "03_fish_side_light.jpg",
+      "status": "READY",
+      "matteScore": 0.6196143159679881,
+      "pathCount": 2433
+    },
+    {
+      "image": "04_fish_coho.jpg",
+      "status": "READY",
+      "matteScore": 0.6996608561674023,
+      "pathCount": 1794
+    },
+    {
+      "image": "05_fish_angled.jpg",
+      "status": "READY",
+      "matteScore": 0.6678969539242681,
+      "pathCount": 2543
+    },
+    {
+      "image": "06_fish_chinook_fda.jpg",
+      "status": "READY",
+      "matteScore": 0.6435267814690058,
+      "pathCount": 2560
+    },
+    {
+      "image": "07_fish_chinook_specimen.jpg",
+      "status": "READY",
+      "matteScore": 0.5511672081606741,
+      "pathCount": 2419
+    },
+    {
+      "image": "08_fish_chinook_forest.jpg",
+      "status": "READY",
+      "matteScore": 0.7207342482640341,
+      "pathCount": 1823
+    },
+    {
+      "image": "09_fish_coho_profile.jpg",
+      "status": "READY",
+      "matteScore": 0.7121781247521642,
+      "pathCount": 1888
+    },
+    {
+      "image": "10_fish_coho_young.jpg",
+      "status": "READY",
+      "matteScore": 0.7349695732174483,
+      "pathCount": 2052
+    },
+    {
+      "image": "11_fish_sockeye_fda.jpg",
+      "status": "READY",
+      "matteScore": 0.7333219384196654,
+      "pathCount": 2020
+    },
+    {
+      "image": "12_fish_sockeye_spawn.jpg",
+      "status": "READY",
+      "matteScore": 0.6988178501940535,
+      "pathCount": 1790
+    },
+    {
+      "image": "13_fish_kokanee.jpg",
+      "status": "READY",
+      "matteScore": 0.5769158134775458,
+      "pathCount": 2287
+    },
+    {
+      "image": "14_fish_sockeye_side.jpg",
+      "status": "READY",
+      "matteScore": 0.5352606873479555,
+      "pathCount": 2973
+    },
+    {
+      "image": "15_fish_tagged.jpg",
+      "status": "READY",
+      "matteScore": 0.5349373331945367,
+      "pathCount": 1965
+    },
+    {
+      "image": "16_fish_creek.jpg",
+      "status": "READY",
+      "matteScore": 0.5027753109518329,
+      "pathCount": 1873
+    },
+    {
+      "image": "17_bad_busy_bg.jpg",
+      "status": "REJECTED",
+      "matteScore": 0.39248217242414307,
+      "pathCount": 0
+    },
+    {
+      "image": "18_bad_motion_blur.jpg",
+      "status": "REJECTED",
+      "matteScore": 0.0,
+      "pathCount": 0
+    },
+    {
+      "image": "19_bad_low_light.jpg",
+      "status": "REJECTED",
+      "matteScore": 0.26838855310449394,
+      "pathCount": 0
+    },
+    {
+      "image": "20_bad_no_subject.jpg",
+      "status": "REJECTED",
+      "matteScore": 0.23477172757568926,
+      "pathCount": 0
+    }
+  ]
+}

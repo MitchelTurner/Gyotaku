@@ -5,6 +5,9 @@ Twenty salmon/fish inputs for visual regression. Real user catches + Wikimedia C
 ```bash
 gyotaku corpus
 # → corpus/runs/<timestamp>/contact_sheet.png
+
+gyotaku corpus --gate          # fail if matteScore / pathCount drift past baseline
+gyotaku corpus --write-baseline  # refresh corpus/baseline_metrics.json after intentional changes
 ```
 
 - `01`–`05`: user uploads
@@ -12,3 +15,5 @@ gyotaku corpus
 - `17`–`20`: deliberately bad (should soft-reject)
 
 See `SOURCES.json` for filenames and sizes. Do **not** run `gyotaku make-corpus` — that regenerates synthetic placeholders and will wipe these.
+
+CI runs unit tests (including salmon matte heuristics + gate helpers). Full `--gate` on real photos is opt-in via repo variable `GYOTAKU_CORPUS_GATE=1`.

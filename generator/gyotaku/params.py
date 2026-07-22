@@ -11,9 +11,18 @@ import json
 from dataclasses import asdict, dataclass, field, fields
 from typing import Any, Literal, Optional
 
+from gyotaku.salmon import (
+    normalize_side,
+    normalize_species,
+    side_density_overrides,
+    species_density_overrides,
+)
+
 
 CanvasSize = Literal["A3", "A2", "18x24in"]
 MarkStrategyName = Literal["flowfield", "contour", "stipple"]
+SpeciesTag = Literal["chinook", "coho", "sockeye", "other"]
+SideTag = Literal["left", "right", "unknown"]
 
 # Physical canvas sizes in millimetres (width × height, landscape available via rotate)
 CANVAS_MM: dict[str, tuple[float, float]] = {
@@ -42,6 +51,12 @@ class StyleParams:
     # Paper grows to fit (margins included). None = fit to named canvas via subject_fill.
     fish_length_in: Optional[float] = None
 
+    # Optional subject tags — nudge mark density / presentation
+    species: Optional[SpeciesTag] = None
+    side: Optional[SideTag] = None
+    # Mirror subject after matte (set automatically for side=right)
+    flip_horizontal: bool = False
+
     # Ingest
     process_long_edge: int = 2048
     mark_long_edge: int = 1024  # tonal + marks at this scale (paths scaled to match)
@@ -51,6 +66,8 @@ class StyleParams:
     matte_score_threshold: float = 0.40
     matte_feather_px: float = 1.5
     crop_margin_ratio: float = 0.08
+    # Extra confidence budget for fish-like silhouettes (fins / aspect)
+    salmon_matte_enabled: bool = True
 
     # Tonal
     clahe_clip: float = 2.5
@@ -119,6 +136,14 @@ class StyleParams:
                 filtered["fish_length_in"] = None
             else:
                 filtered["fish_length_in"] = float(raw)
+        if "species" in filtered:
+            filtered["species"] = normalize_species(filtered["species"])
+        if "side" in filtered:
+            filtered["side"] = normalize_side(filtered["side"])
+        if "flip_horizontal" in filtered:
+            filtered["flip_horizontal"] = bool(filtered["flip_horizontal"])
+        if "salmon_matte_enabled" in filtered:
+            filtered["salmon_matte_enabled"] = bool(filtered["salmon_matte_enabled"])
         return cls(**filtered)
 
     @classmethod
@@ -168,6 +193,19 @@ def resolve_params(
         data.update(PRESETS[preset])
     if overrides:
         data.update(overrides)
+
+    # Species / side tags apply mild density nudges unless the caller already
+    # set those density keys explicitly in overrides.
+    override_keys = set(overrides.keys()) if overrides else set()
+    for key, value in species_density_overrides(data.get("species")).items():
+        if key not in override_keys:
+            data[key] = value
+    for key, value in side_density_overrides(data.get("side")).items():
+        if key not in override_keys and key != "flip_horizontal":
+            data[key] = value
+        elif key == "flip_horizontal" and "flip_horizontal" not in override_keys:
+            data[key] = value
+
     # Clamp posterize
     levels = int(data.get("posterize_levels", 4))
     data["posterize_levels"] = max(3, min(6, levels))
@@ -179,4 +217,6 @@ def resolve_params(
         data["fish_length_in"] = max(
             MIN_FISH_LENGTH_IN, min(MAX_FISH_LENGTH_IN, float(fl))
         )
+    data["species"] = normalize_species(data.get("species"))
+    data["side"] = normalize_side(data.get("side"))
     return StyleParams.from_dict(data)

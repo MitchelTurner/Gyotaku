@@ -9,6 +9,7 @@ import numpy as np
 from PIL import Image
 
 from gyotaku.params import StyleParams
+from gyotaku.salmon import fish_likeness, salmon_matte_bonus
 
 
 @dataclass
@@ -75,6 +76,12 @@ def _edge_coherence(alpha: np.ndarray) -> float:
     hull_area = float(cv2.contourArea(hull))
     solidity = min(1.0, area / (hull_area + 1e-6))
 
+    # Fish fins lower solidity; remap so typical salmon (~0.75–0.9) still scores well
+    x0, y0, bw, bh = cv2.boundingRect(main)
+    aspect = max(bw, bh) / float(max(1, min(bw, bh)))
+    if aspect >= 1.6 and solidity >= 0.62:
+        solidity = min(1.0, solidity + (1.0 - solidity) * 0.45)
+
     # Smoothness: how well a polygon approx reconstructs the contour
     peri = float(cv2.arcLength(main, True))
     approx = cv2.approxPolyDP(main, 0.01 * peri, True)
@@ -88,10 +95,14 @@ def _edge_coherence(alpha: np.ndarray) -> float:
     return float(0.45 * solidity + 0.25 * smooth + 0.30 * overlap)
 
 
-def score_matte(alpha: np.ndarray) -> float:
+def score_matte(alpha: np.ndarray, *, salmon_aware: bool = True) -> float:
     """
     Confidence from subject area ratio, edge coherence, and single-subject purity.
     Returns value in roughly [0, 1]. Below threshold → soft reject (do not generate).
+
+    When salmon_aware, elongated silhouettes with fin-like convexity defects get a
+    small bonus and lighter purity/solidity penalties (fins look "fragmented" to a
+    generic blob scorer).
     """
     h, w = alpha.shape
     total = float(h * w)
@@ -113,15 +124,22 @@ def score_matte(alpha: np.ndarray) -> float:
             area_score = 1.0
 
     coherence = _edge_coherence(alpha)
+    likeness = fish_likeness(alpha) if salmon_aware else 0.0
 
     binary = (alpha > 0.5).astype(np.uint8)
     holes = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
     hole_frac = float(np.count_nonzero(holes != binary)) / total
     noise_penalty = min(0.35, hole_frac * 8.0)
+    # Fins create small morphological "holes" near the outline — ease the penalty
+    if likeness > 0.4:
+        noise_penalty *= 1.0 - 0.45 * likeness
 
     # Soft / uncertain alpha band — busy scenes leave lots of partial coverage
     uncertain = float(np.count_nonzero((alpha > 0.15) & (alpha < 0.85))) / total
     uncertain_penalty = min(0.4, uncertain * 6.0)
+    if likeness > 0.45:
+        # Soft fin edges shouldn't tank a clean catch photo
+        uncertain_penalty *= 1.0 - 0.35 * likeness
 
     # Single primary component should dominate the matte
     n_labels, labels, stats, _ = cv2.connectedComponentsWithStats(binary, connectivity=8)
@@ -139,6 +157,9 @@ def score_matte(alpha: np.ndarray) -> float:
             purity_penalty += (0.75 - purity) * 0.8
         if mid > 3:
             purity_penalty += min(0.35, (mid - 3) * 0.08)
+        # Detached fin tips / splash droplets are common on salmon mattes
+        if likeness > 0.5 and mid <= 6:
+            purity_penalty *= 1.0 - 0.5 * likeness
 
     score = (
         0.45 * area_score
@@ -147,6 +168,8 @@ def score_matte(alpha: np.ndarray) -> float:
         - uncertain_penalty
         - purity_penalty
     )
+    if salmon_aware:
+        score += salmon_matte_bonus(alpha)
     return float(np.clip(score, 0.0, 1.0))
 
 
@@ -189,7 +212,7 @@ def expand_bbox(
 def segment_subject(rgb: np.ndarray, params: StyleParams) -> SegmentationResult:
     rgba = remove_background(rgb)
     alpha = rgba[:, :, 3].astype(np.float32) / 255.0
-    score = score_matte(alpha)
+    score = score_matte(alpha, salmon_aware=params.salmon_matte_enabled)
 
     if score < params.matte_score_threshold:
         raise SegmentationRejected(
@@ -203,10 +226,17 @@ def segment_subject(rgb: np.ndarray, params: StyleParams) -> SegmentationResult:
         )
 
     alpha = feather_matte(alpha, params.matte_feather_px)
+
+    # Present right-side fish mirrored so head faces a consistent direction
+    working_rgb = rgb
+    if params.flip_horizontal:
+        alpha = np.ascontiguousarray(np.fliplr(alpha))
+        working_rgb = np.ascontiguousarray(np.fliplr(rgb))
+
     bbox = expand_bbox(subject_bbox(alpha), alpha.shape, params.crop_margin_ratio)
 
     # Subject on pure white void for downstream tonal work
-    cutout = rgb.copy()
+    cutout = working_rgb.copy()
     white = np.ones_like(cutout) * 255
     a = alpha[..., None]
     cutout = (cutout.astype(np.float32) * a + white.astype(np.float32) * (1.0 - a)).astype(

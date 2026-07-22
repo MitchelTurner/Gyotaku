@@ -141,6 +141,17 @@ def generate_cmd(
     multiple=True,
     help="Inline override key=value (repeatable)",
 )
+@click.option(
+    "--gate/--no-gate",
+    default=False,
+    show_default=True,
+    help="Fail if matteScore / pathCount drift past corpus/baseline_metrics.json",
+)
+@click.option(
+    "--write-baseline",
+    is_flag=True,
+    help="Rewrite corpus/baseline_metrics.json from this run (then exit 0)",
+)
 def corpus_cmd(
     corpus_dir: Path | None,
     output_dir: Path | None,
@@ -148,14 +159,24 @@ def corpus_cmd(
     preset: str | None,
     seed: int,
     overrides: tuple[str, ...],
+    gate: bool,
+    write_baseline: bool,
 ) -> None:
     """Regenerate the full test corpus and write a contact sheet."""
     from datetime import datetime, timezone
 
+    from gyotaku.corpus_gate import (
+        CorpusGateError,
+        assert_summary_within_baseline,
+        baseline_from_summary,
+        load_baseline,
+        write_baseline as save_baseline,
+    )
     from gyotaku.corpus_runner import run_corpus
 
     root = Path(__file__).resolve().parent.parent
     corpus_dir = corpus_dir or (root / "corpus" / "images")
+    baseline_path = root / "corpus" / "baseline_metrics.json"
     if output_dir is None:
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         output_dir = root / "corpus" / "runs" / stamp
@@ -168,6 +189,25 @@ def corpus_cmd(
     )
     if summary["failed"]:
         sys.exit(1)
+
+    if write_baseline:
+        save_baseline(baseline_path, baseline_from_summary(summary))
+        click.echo(f"Wrote baseline → {baseline_path}")
+        return
+
+    if gate:
+        if not baseline_path.exists():
+            raise click.ClickException(
+                f"No baseline at {baseline_path}. Run with --write-baseline first."
+            )
+        try:
+            assert_summary_within_baseline(summary, load_baseline(baseline_path))
+        except CorpusGateError as e:
+            click.echo("Corpus regression gate FAILED:", err=True)
+            for line in e.failures:
+                click.echo(f"  - {line}", err=True)
+            sys.exit(3)
+        click.echo("Corpus regression gate OK")
 
 
 @main.command("make-corpus")

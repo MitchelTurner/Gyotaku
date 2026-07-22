@@ -35,13 +35,17 @@ gyotaku corpus               # regenerate all → corpus/runs/<timestamp>/ + con
 
 Replace the synthetic images in `corpus/images/` with real photos when available (same filenames or any `*.jpg`/`*.png`). Every generator change should re-run the corpus and be reviewed by eye.
 
-## Determinism
+## Determinism & quality gates
 
 `(imageHash, styleParams, seed)` → byte-identical SVG. Asserted in CI:
 
 ```bash
 pytest -q
+# optional full corpus drift check (needs corpus images + rembg weights):
+gyotaku corpus --gate
 ```
+
+Optional style params: `species` (`chinook|coho|sockeye|other`) and `side` (`left|right`) nudge mark density; salmon-aware matte scoring reduces false rejects on finned silhouettes.
 
 ## Architecture (this package)
 

@@ -49,8 +49,12 @@ def run_corpus(
         status = "FAILED"
         reason = None
         preview = None
+        matte_score = None
+        path_count = None
         try:
             result = generate(img, out, params=params, seed=seed, write_print=False, progress=None)
+            matte_score = float(result.matte_score)
+            path_count = int(result.path_count)
             if result.rejected:
                 status = "REJECTED"
                 rejected += 1
@@ -69,6 +73,8 @@ def run_corpus(
                 "image": img.name,
                 "status": status,
                 "reason": reason,
+                "matteScore": matte_score,
+                "pathCount": path_count,
                 "output": str(out),
             }
         )

@@ -4,11 +4,16 @@ import type { RenditionResponse } from '../lib/api'
 import { formatPaperSize, formatPlotTime } from '../lib/format'
 import { FishSizeInput } from './FishSize'
 
+export type SpeciesTag = 'chinook' | 'coho' | 'sockeye' | 'other' | null
+export type SideTag = 'left' | 'right' | 'unknown' | null
+
 export type StyleControls = {
   strategy: 'flowfield' | 'contour' | 'stipple'
   density: 'sparse' | 'default' | 'dense'
   ink: 'crisp' | 'default' | 'soft'
   fishLengthIn: number | null
+  species: SpeciesTag
+  side: SideTag
 }
 
 type Props = {
@@ -17,6 +22,7 @@ type Props = {
   regenerating: boolean
   onControlsChange: (next: StyleControls) => void
   onRegenerate: () => void
+  onCompare: () => void
   onOrder: () => void
   onStartOver: () => void
 }
@@ -27,6 +33,7 @@ export function Preview({
   regenerating,
   onControlsChange,
   onRegenerate,
+  onCompare,
   onOrder,
   onStartOver,
 }: Props) {
@@ -162,6 +169,41 @@ export function Preview({
           ))}
         </ControlGroup>
 
+        <ControlGroup label="Species (optional)">
+          {(
+            [
+              [null, 'Any'],
+              ['chinook', 'Chinook'],
+              ['coho', 'Coho'],
+              ['sockeye', 'Sockeye'],
+            ] as const
+          ).map(([value, label]) => (
+            <Choice
+              key={label}
+              active={controls.species === value}
+              onClick={() => onControlsChange({ ...controls, species: value })}
+              label={label}
+            />
+          ))}
+        </ControlGroup>
+
+        <ControlGroup label="Side (optional)">
+          {(
+            [
+              [null, 'Any'],
+              ['left', 'Left'],
+              ['right', 'Right'],
+            ] as const
+          ).map(([value, label]) => (
+            <Choice
+              key={label}
+              active={controls.side === value}
+              onClick={() => onControlsChange({ ...controls, side: value })}
+              label={label}
+            />
+          ))}
+        </ControlGroup>
+
         <button
           type="button"
           disabled={regenerating}
@@ -169,6 +211,14 @@ export function Preview({
           className="mt-8 w-full rounded-sm bg-sea px-5 py-3.5 text-sm font-medium text-foam transition hover:bg-sea-deep disabled:opacity-50"
         >
           Order this print
+        </button>
+        <button
+          type="button"
+          disabled={regenerating}
+          onClick={onCompare}
+          className="mt-3 w-full rounded-sm border border-ink/15 px-5 py-3 text-sm font-medium text-ink/80 transition hover:border-ink/30 disabled:opacity-50"
+        >
+          Compare styles side-by-side
         </button>
         <button
           type="button"

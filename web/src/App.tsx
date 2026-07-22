@@ -1,4 +1,8 @@
 import { startTransition, useEffect, useRef, useState } from 'react'
+import {
+  CompareStrategies,
+  type StrategyName,
+} from './components/CompareStrategies'
 import { HeroUpload } from './components/HeroUpload'
 import { OrderStatus } from './components/OrderStatus'
 import { OrderStep } from './components/OrderStep'
@@ -21,6 +25,12 @@ import {
 import { prepareUploadFile } from './lib/image'
 import { getSessionId } from './lib/session'
 
+type CompareSlot = {
+  strategy: StrategyName
+  rendition: RenditionResponse | null
+  error: string | null
+}
+
 type Phase =
   | { name: 'idle' }
   | { name: 'share'; renditionId: string }
@@ -28,6 +38,7 @@ type Phase =
   | { name: 'size'; uploadId: string }
   | { name: 'processing'; renditionId: string; stage: string | null }
   | { name: 'ready'; rendition: RenditionResponse }
+  | { name: 'compare'; slots: CompareSlot[]; busy: boolean }
   | {
       name: 'order'
       rendition: RenditionResponse
@@ -42,7 +53,11 @@ const DEFAULT_CONTROLS: StyleControls = {
   density: 'default',
   ink: 'default',
   fishLengthIn: null,
+  species: null,
+  side: null,
 }
+
+const COMPARE_STRATEGIES: StrategyName[] = ['flowfield', 'contour', 'stipple']
 
 function styleParamsFromControls(c: StyleControls): Record<string, unknown> {
   const params: Record<string, unknown> = {
@@ -53,6 +68,9 @@ function styleParamsFromControls(c: StyleControls): Record<string, unknown> {
   if (c.fishLengthIn != null && Number.isFinite(c.fishLengthIn)) {
     params.fish_length_in = clampFishLength(c.fishLengthIn)
   }
+
+  if (c.species) params.species = c.species
+  if (c.side) params.side = c.side
 
   if (c.density === 'sparse') {
     Object.assign(params, {
@@ -95,10 +113,23 @@ function controlsFromStyleParams(style: Record<string, unknown>): StyleControls 
       : 'flowfield'
   const fishLengthIn =
     typeof style.fish_length_in === 'number' ? style.fish_length_in : null
+  const species =
+    style.species === 'chinook' ||
+    style.species === 'coho' ||
+    style.species === 'sockeye' ||
+    style.species === 'other'
+      ? style.species
+      : null
+  const side =
+    style.side === 'left' || style.side === 'right' || style.side === 'unknown'
+      ? style.side
+      : null
   return {
     ...DEFAULT_CONTROLS,
     strategy,
     fishLengthIn,
+    species,
+    side,
   }
 }
 
@@ -301,6 +332,90 @@ export default function App() {
     }
   }
 
+  async function handleCompare() {
+    if (!uploadId) return
+    clearPoll()
+    const sessionId = getSessionId()
+    let slots: CompareSlot[] = COMPARE_STRATEGIES.map((strategy) => ({
+      strategy,
+      rendition: null,
+      error: null,
+    }))
+    setPhase({ name: 'compare', slots, busy: true })
+
+    try {
+      const created = await Promise.all(
+        COMPARE_STRATEGIES.map(async (strategy) => {
+          try {
+            const rendition = await createRendition({
+              uploadId,
+              sessionId,
+              seed,
+              styleParams: styleParamsFromControls({ ...controls, strategy }),
+            })
+            return { strategy, rendition, error: null as string | null }
+          } catch (e) {
+            return {
+              strategy,
+              rendition: null,
+              error: e instanceof Error ? e.message : 'Failed',
+            }
+          }
+        }),
+      )
+      slots = created
+      setPhase({ name: 'compare', slots, busy: true })
+
+      const pending = created.filter(
+        (s) =>
+          s.rendition &&
+          (s.rendition.status === 'QUEUED' || s.rendition.status === 'PROCESSING'),
+      )
+      if (pending.length === 0) {
+        setPhase({ name: 'compare', slots, busy: false })
+        return
+      }
+
+      const tick = async () => {
+        const next = await Promise.all(
+          slots.map(async (slot) => {
+            if (!slot.rendition) return slot
+            if (
+              slot.rendition.status !== 'QUEUED' &&
+              slot.rendition.status !== 'PROCESSING'
+            ) {
+              return slot
+            }
+            try {
+              const r = await getRendition(slot.rendition.id)
+              return { ...slot, rendition: r }
+            } catch (e) {
+              return {
+                ...slot,
+                error: e instanceof Error ? e.message : 'Poll failed',
+              }
+            }
+          }),
+        )
+        slots = next
+        const still = next.some(
+          (s) =>
+            s.rendition &&
+            (s.rendition.status === 'QUEUED' || s.rendition.status === 'PROCESSING'),
+        )
+        setPhase({ name: 'compare', slots: next, busy: still })
+        if (!still) clearPoll()
+      }
+      await tick()
+      pollRef.current = window.setInterval(tick, 2000)
+    } catch (e) {
+      setPhase({
+        name: 'error',
+        message: e instanceof Error ? e.message : 'Compare failed',
+      })
+    }
+  }
+
   async function handleReorder(recipe: ReorderRecipe, preferProduct?: ProductType) {
     clearOrderQuery()
     try {
@@ -371,8 +486,31 @@ export default function App() {
           regenerating={regenerating}
           onControlsChange={setControls}
           onRegenerate={handleRegenerate}
+          onCompare={handleCompare}
           onOrder={() => setPhase({ name: 'order', rendition: phase.rendition })}
           onStartOver={resetToIdle}
+        />
+      )}
+
+      {phase.name === 'compare' && (
+        <CompareStrategies
+          slots={phase.slots}
+          selectedId={lastReady?.id ?? null}
+          busy={phase.busy}
+          onSelect={(rendition, strategy) => {
+            clearPoll()
+            setControls({ ...controls, strategy })
+            setLastReady(rendition)
+            startTransition(() => setPhase({ name: 'ready', rendition }))
+          }}
+          onClose={() => {
+            clearPoll()
+            if (lastReady) {
+              setPhase({ name: 'ready', rendition: lastReady })
+            } else {
+              setPhase({ name: 'error', message: 'No preview selected' })
+            }
+          }}
         />
       )}
 

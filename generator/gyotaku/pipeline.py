@@ -234,6 +234,8 @@ def generate(
         "canvas": params.canvas,
         "strategy": params.strategy,
         "fishLengthIn": params.fish_length_in,
+        "species": params.species,
+        "side": params.side,
         "paperWidthMm": layout.canvas_w_mm,
         "paperHeightMm": layout.canvas_h_mm,
         "source": str(Path(image_path).resolve()),
