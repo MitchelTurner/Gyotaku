@@ -16,7 +16,7 @@ docker compose up -d   # from repo root
 cd generator
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
-pip install -r worker/requirements.txt
+# or: pip install -r requirements.txt
 
 export DATABASE_URL=postgresql://gyotaku:gyotaku@localhost:5432/gyotaku
 export REDIS_URL=redis://localhost:6379
