@@ -41,6 +41,17 @@ export class OrdersController {
     return this.orders.getOrder(id, sessionId);
   }
 
+  @Get('orders/:id/artifacts')
+  artifacts(
+    @Param('id') id: string,
+    @Query('sessionId') sessionId?: string,
+  ) {
+    if (!sessionId) {
+      throw new UnauthorizedException('sessionId is required');
+    }
+    return this.orders.getArtifacts(id, sessionId);
+  }
+
   @Post('webhooks/stripe')
   stripeWebhook(
     @Req() req: RawBodyRequest<Request>,

@@ -297,6 +297,7 @@ def process_job(job: dict[str, Any]) -> None:
             set_stage(conn, rendition_id, "finishing")
             svg_key = f"renditions/{rendition_id}/artwork.svg"
             preview_key = f"renditions/{rendition_id}/preview.png"
+            preview_clean_key = f"renditions/{rendition_id}/preview_clean.png"
             s3.upload_file(
                 str(result.svg_path),
                 S3_BUCKET,
@@ -309,6 +310,15 @@ def process_job(job: dict[str, Any]) -> None:
                 preview_key,
                 ExtraArgs={"ContentType": "image/png"},
             )
+            if result.preview_clean_path and result.preview_clean_path.exists():
+                s3.upload_file(
+                    str(result.preview_clean_path),
+                    S3_BUCKET,
+                    preview_clean_key,
+                    ExtraArgs={"ContentType": "image/png"},
+                )
+            else:
+                preview_clean_key = None
 
             update_rendition(
                 conn,
@@ -319,7 +329,10 @@ def process_job(job: dict[str, Any]) -> None:
                     "matteScore": result.matte_score,
                     "svgKey": svg_key,
                     "previewKey": preview_key,
+                    "previewCleanKey": preview_clean_key,
                     "estPlotSeconds": result.est_plot_seconds,
+                    "paperWidthMm": result.paper_width_mm or None,
+                    "paperHeightMm": result.paper_height_mm or None,
                     "completedAt": datetime.now(timezone.utc),
                 },
             )

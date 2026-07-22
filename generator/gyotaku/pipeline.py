@@ -70,6 +70,7 @@ def _maybe_downsample_for_marks(tonal: TonalMaps, mark_long_edge: int) -> tuple[
 class GenerationResult:
     svg_path: Path
     preview_path: Path
+    preview_clean_path: Path | None
     print_path: Path | None
     meta_path: Path
     image_hash: str
@@ -78,6 +79,8 @@ class GenerationResult:
     est_plot_seconds: int
     svg_hash: str
     path_count: int
+    paper_width_mm: float = 0.0
+    paper_height_mm: float = 0.0
     rejected: bool = False
     failure_reason: str | None = None
 
@@ -105,7 +108,8 @@ def generate(
 
     Writes:
       - artwork.svg
-      - preview.png
+      - preview.png (watermarked when params.watermark)
+      - preview_clean.png (never watermarked — paid unlock)
       - print.png (optional)
       - meta.json
     """
@@ -148,6 +152,7 @@ def generate(
         return GenerationResult(
             svg_path=output_dir / "artwork.svg",
             preview_path=output_dir / "preview.png",
+            preview_clean_path=None,
             print_path=None,
             meta_path=meta_path,
             image_hash=ingested.image_hash,
@@ -200,9 +205,13 @@ def generate(
     digest = svg_sha256(svg)
 
     _progress(progress, "finishing", "render preview")
-    preview = render_preview_png(paths, layout, params)
+    preview = render_preview_png(paths, layout, params, watermark=True)
     preview_path = output_dir / "preview.png"
     write_png(preview_path, preview)
+
+    preview_clean = render_preview_png(paths, layout, params, watermark=False)
+    preview_clean_path = output_dir / "preview_clean.png"
+    write_png(preview_clean_path, preview_clean)
 
     print_path = None
     if write_print:
@@ -236,6 +245,7 @@ def generate(
     return GenerationResult(
         svg_path=svg_path,
         preview_path=preview_path,
+        preview_clean_path=preview_clean_path,
         print_path=print_path,
         meta_path=meta_path,
         image_hash=ingested.image_hash,
@@ -244,4 +254,6 @@ def generate(
         est_plot_seconds=est,
         svg_hash=digest,
         path_count=len(paths),
+        paper_width_mm=layout.canvas_w_mm,
+        paper_height_mm=layout.canvas_h_mm,
     )

@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
+import { useState } from 'react'
 import type { RenditionResponse } from '../lib/api'
+import { formatPaperSize, formatPlotTime } from '../lib/format'
 import { FishSizeInput } from './FishSize'
 
 export type StyleControls = {
@@ -28,23 +30,46 @@ export function Preview({
   onOrder,
   onStartOver,
 }: Props) {
+  const [copied, setCopied] = useState(false)
   const lengthLabel =
     controls.fishLengthIn != null
       ? ` · life-size ${formatLen(controls.fishLengthIn)}`
       : ''
+  const paper = formatPaperSize(rendition.paperWidthMm, rendition.paperHeightMm)
+  const plot = formatPlotTime(rendition.estPlotSeconds)
+
+  async function handleShare() {
+    const url = `${window.location.origin}/?p=${rendition.id}`
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 2000)
+    } catch {
+      window.prompt('Copy share link', url)
+    }
+  }
 
   return (
     <section className="mx-auto flex min-h-dvh w-full max-w-6xl flex-col gap-8 px-4 py-8 sm:px-8 lg:flex-row lg:items-start lg:gap-12 lg:py-12">
       <div className="min-w-0 flex-1">
         <div className="mb-4 flex items-baseline justify-between gap-3">
           <p className="font-display text-2xl text-ink">Gyotaku</p>
-          <button
-            type="button"
-            onClick={onStartOver}
-            className="text-xs uppercase tracking-[0.16em] text-ink/45 transition hover:text-ink"
-          >
-            New photo
-          </button>
+          <div className="flex items-center gap-4">
+            <button
+              type="button"
+              onClick={handleShare}
+              className="text-xs uppercase tracking-[0.16em] text-ink/45 transition hover:text-ink"
+            >
+              {copied ? 'Link copied' : 'Share'}
+            </button>
+            <button
+              type="button"
+              onClick={onStartOver}
+              className="text-xs uppercase tracking-[0.16em] text-ink/45 transition hover:text-ink"
+            >
+              New photo
+            </button>
+          </div>
         </div>
 
         <div className="animate-preview-in overflow-hidden rounded-sm bg-[linear-gradient(160deg,#f7f9f7,#e4ebe6)] shadow-[0_20px_60px_rgba(20,24,22,0.12)] ring-1 ring-ink/5">
@@ -63,9 +88,8 @@ export function Preview({
         <p className="mt-3 text-xs text-ink/40">
           Watermarked preview
           {lengthLabel}
-          {rendition.estPlotSeconds
-            ? ` · ~${Math.round(rendition.estPlotSeconds / 60)} min plot`
-            : ''}
+          {paper ? ` · paper ${paper}` : ''}
+          {plot ? ` · ${plot}` : ''}
           {rendition.matteScore != null
             ? ` · matte ${rendition.matteScore.toFixed(2)}`
             : ''}

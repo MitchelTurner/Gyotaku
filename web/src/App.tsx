@@ -5,6 +5,7 @@ import { OrderStep } from './components/OrderStep'
 import { Preview, type StyleControls } from './components/Preview'
 import { Processing } from './components/Processing'
 import { RejectNotice } from './components/RejectNotice'
+import { ShareLanding } from './components/ShareLanding'
 import { SizeStep } from './components/SizeStep'
 import { clampFishLength } from './components/FishSize'
 import {
@@ -13,6 +14,8 @@ import {
   getRendition,
   presignUpload,
   putUploadBytes,
+  type ProductType,
+  type ReorderRecipe,
   type RenditionResponse,
 } from './lib/api'
 import { prepareUploadFile } from './lib/image'
@@ -20,11 +23,16 @@ import { getSessionId } from './lib/session'
 
 type Phase =
   | { name: 'idle' }
+  | { name: 'share'; renditionId: string }
   | { name: 'uploading' }
   | { name: 'size'; uploadId: string }
   | { name: 'processing'; renditionId: string; stage: string | null }
   | { name: 'ready'; rendition: RenditionResponse }
-  | { name: 'order'; rendition: RenditionResponse }
+  | {
+      name: 'order'
+      rendition: RenditionResponse
+      preferProduct?: ProductType
+    }
   | { name: 'orderResult'; orderId: string; kind: 'success' | 'cancel' }
   | { name: 'rejected'; rendition: RenditionResponse }
   | { name: 'error'; message: string }
@@ -80,6 +88,20 @@ function styleParamsFromControls(c: StyleControls): Record<string, unknown> {
   return params
 }
 
+function controlsFromStyleParams(style: Record<string, unknown>): StyleControls {
+  const strategy =
+    style.strategy === 'contour' || style.strategy === 'stipple'
+      ? style.strategy
+      : 'flowfield'
+  const fishLengthIn =
+    typeof style.fish_length_in === 'number' ? style.fish_length_in : null
+  return {
+    ...DEFAULT_CONTROLS,
+    strategy,
+    fishLengthIn,
+  }
+}
+
 function readOrderReturn(): { kind: 'success' | 'cancel'; orderId: string } | null {
   const params = new URLSearchParams(window.location.search)
   const order = params.get('order')
@@ -90,6 +112,11 @@ function readOrderReturn(): { kind: 'success' | 'cancel'; orderId: string } | nu
   return null
 }
 
+function readShareId(): string | null {
+  const params = new URLSearchParams(window.location.search)
+  return params.get('p')
+}
+
 function clearOrderQuery() {
   const url = new URL(window.location.href)
   url.searchParams.delete('order')
@@ -97,12 +124,22 @@ function clearOrderQuery() {
   window.history.replaceState({}, '', url.pathname + url.search)
 }
 
+function clearShareQuery() {
+  const url = new URL(window.location.href)
+  url.searchParams.delete('p')
+  window.history.replaceState({}, '', url.pathname + url.search)
+}
+
+function initialPhase(): Phase {
+  const ret = readOrderReturn()
+  if (ret) return { name: 'orderResult', ...ret }
+  const shareId = readShareId()
+  if (shareId) return { name: 'share', renditionId: shareId }
+  return { name: 'idle' }
+}
+
 export default function App() {
-  const [phase, setPhase] = useState<Phase>(() => {
-    const ret = readOrderReturn()
-    if (ret) return { name: 'orderResult', ...ret }
-    return { name: 'idle' }
-  })
+  const [phase, setPhase] = useState<Phase>(initialPhase)
   const [error, setError] = useState<string | null>(null)
   const [uploadId, setUploadId] = useState<string | null>(null)
   const [seed, setSeed] = useState(() => Math.floor(Math.random() * 1_000_000_000))
@@ -128,6 +165,7 @@ export default function App() {
   function resetToIdle() {
     clearPoll()
     clearOrderQuery()
+    clearShareQuery()
     setUploadId(null)
     setLastReady(null)
     setSeed(Math.floor(Math.random() * 1_000_000_000))
@@ -263,8 +301,46 @@ export default function App() {
     }
   }
 
+  async function handleReorder(recipe: ReorderRecipe, preferProduct?: ProductType) {
+    clearOrderQuery()
+    try {
+      const r = await getRendition(recipe.renditionId)
+      if (r.status !== 'READY') {
+        setPhase({
+          name: 'error',
+          message: 'That print is no longer available to reorder',
+        })
+        return
+      }
+      setUploadId(recipe.uploadId)
+      setSeed(recipe.seed)
+      setControls(controlsFromStyleParams(recipe.styleParams || {}))
+      setLastReady(r)
+      if (preferProduct) {
+        setPhase({ name: 'order', rendition: r, preferProduct })
+      } else {
+        setPhase({ name: 'ready', rendition: r })
+      }
+    } catch (e) {
+      setPhase({
+        name: 'error',
+        message: e instanceof Error ? e.message : 'Could not reload print',
+      })
+    }
+  }
+
   return (
     <div className="paper-scene min-h-dvh text-ink">
+      {phase.name === 'share' && (
+        <ShareLanding
+          renditionId={phase.renditionId}
+          onMakeYours={() => {
+            clearShareQuery()
+            setPhase({ name: 'idle' })
+          }}
+        />
+      )}
+
       {(phase.name === 'idle' || phase.name === 'uploading') && (
         <HeroUpload
           busy={phase.name === 'uploading'}
@@ -303,7 +379,10 @@ export default function App() {
       {phase.name === 'order' && (
         <OrderStep
           rendition={phase.rendition}
-          fishLengthIn={controls.fishLengthIn}
+          fishLengthIn={
+            controls.fishLengthIn ?? phase.rendition.fishLengthIn ?? null
+          }
+          initialProductType={phase.preferProduct}
           onBack={() => setPhase({ name: 'ready', rendition: phase.rendition })}
           onStartOver={resetToIdle}
         />
@@ -313,6 +392,7 @@ export default function App() {
         <OrderStatus
           orderId={phase.orderId}
           kind={phase.kind}
+          onReorder={handleReorder}
           onDone={() => {
             clearOrderQuery()
             if (phase.kind === 'cancel' && lastReady) {

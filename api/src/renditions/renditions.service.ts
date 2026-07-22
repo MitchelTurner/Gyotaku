@@ -130,10 +130,39 @@ export class RenditionsService implements OnModuleDestroy {
   async get(id: string) {
     const rendition = await this.prisma.rendition.findUnique({
       where: { id },
-      include: { upload: true },
     });
     if (!rendition) throw new NotFoundException('Rendition not found');
     return this.toResponse(rendition);
+  }
+
+  /** Public share card — watermarked preview only, no SVG. */
+  async getShare(id: string) {
+    const rendition = await this.prisma.rendition.findUnique({
+      where: { id },
+    });
+    if (!rendition) throw new NotFoundException('Rendition not found');
+    if (rendition.status !== 'READY' || !rendition.previewKey) {
+      throw new NotFoundException('Share preview not available');
+    }
+
+    const style = (rendition.styleParams || {}) as Record<string, unknown>;
+    const fishLengthIn =
+      typeof style.fish_length_in === 'number' ? style.fish_length_in : null;
+    const previewUrl = await this.storage.presignGet(rendition.previewKey);
+
+    return {
+      id: rendition.id,
+      status: rendition.status,
+      seed: rendition.seed,
+      previewUrl,
+      estPlotSeconds: rendition.estPlotSeconds,
+      paperWidthMm: rendition.paperWidthMm,
+      paperHeightMm: rendition.paperHeightMm,
+      fishLengthIn,
+      styleParams: {
+        strategy: style.strategy ?? null,
+      },
+    };
   }
 
   private async toResponse(rendition: {
@@ -148,18 +177,21 @@ export class RenditionsService implements OnModuleDestroy {
     previewKey: string | null;
     printKey: string | null;
     estPlotSeconds: number | null;
+    paperWidthMm?: number | null;
+    paperHeightMm?: number | null;
     failureReason: string | null;
     createdAt: Date;
     completedAt: Date | null;
   }) {
     let previewUrl: string | null = null;
-    let svgUrl: string | null = null;
     if (rendition.status === 'READY' && rendition.previewKey) {
       previewUrl = await this.storage.presignGet(rendition.previewKey);
     }
-    if (rendition.status === 'READY' && rendition.svgKey) {
-      svgUrl = await this.storage.presignGet(rendition.svgKey);
-    }
+
+    const style = (rendition.styleParams || {}) as Record<string, unknown>;
+    const fishLengthIn =
+      typeof style.fish_length_in === 'number' ? style.fish_length_in : null;
+
     return {
       id: rendition.id,
       uploadId: rendition.uploadId,
@@ -169,9 +201,12 @@ export class RenditionsService implements OnModuleDestroy {
       stage: rendition.stage,
       matteScore: rendition.matteScore,
       estPlotSeconds: rendition.estPlotSeconds,
+      paperWidthMm: rendition.paperWidthMm ?? null,
+      paperHeightMm: rendition.paperHeightMm ?? null,
+      fishLengthIn,
       failureReason: rendition.failureReason,
       previewUrl,
-      svgUrl,
+      // SVG is operator / paid-only — never expose on the public rendition API
       createdAt: rendition.createdAt,
       completedAt: rendition.completedAt,
     };

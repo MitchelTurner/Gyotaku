@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   ServiceUnavailableException,
@@ -10,6 +11,14 @@ import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { CreateCheckoutDto, UpdateFulfillmentDto } from './dto';
 import { priceCents, productLabel } from './pricing';
+
+const PAID_STATUSES: OrderStatus[] = [
+  'PAID',
+  'PLOTTING',
+  'PRINTING',
+  'PACKED',
+  'SHIPPED',
+];
 
 @Injectable()
 export class OrdersService {
@@ -146,6 +155,49 @@ export class OrdersService {
     return this.toPublic(order);
   }
 
+  /**
+   * Paid unlock: clean (unwatermarked) preview + SVG download.
+   * Requires matching sessionId and a paid/fulfillment status.
+   */
+  async getArtifacts(orderId: string, sessionId: string) {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: { rendition: true },
+    });
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.sessionId !== sessionId) {
+      throw new ForbiddenException('sessionId does not match order');
+    }
+    if (!PAID_STATUSES.includes(order.status)) {
+      throw new ForbiddenException('Artifacts unlock after payment');
+    }
+
+    const previewCleanKey =
+      order.rendition.previewCleanKey || order.rendition.previewKey;
+    const previewCleanUrl = previewCleanKey
+      ? await this.storage.presignGet(previewCleanKey, 3600)
+      : null;
+    const svgUrl = order.rendition.svgKey
+      ? await this.storage.presignGet(order.rendition.svgKey, 3600)
+      : null;
+
+    return {
+      orderId: order.id,
+      productType: order.productType,
+      status: order.status,
+      editionNumber: order.editionNumber,
+      editionSize: order.editionSize,
+      previewCleanUrl,
+      svgUrl,
+      paperWidthMm: order.rendition.paperWidthMm,
+      paperHeightMm: order.rendition.paperHeightMm,
+      estPlotSeconds: order.rendition.estPlotSeconds,
+      seed: order.rendition.seed,
+      styleParams: order.rendition.styleParams,
+      renditionId: order.renditionId,
+    };
+  }
+
   async handleStripeWebhook(rawBody: Buffer, signature: string) {
     const stripe = this.requireStripe();
     const secret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -179,27 +231,53 @@ export class OrdersService {
     const shipping = shippingDetails?.address;
     const name = shippingDetails?.name || session.customer_details?.name;
 
-    await this.prisma.order.updateMany({
-      where: {
-        id: orderId,
-        status: { in: ['DRAFT', 'AWAITING_PAYMENT'] },
-      },
-      data: {
-        status: 'PAID',
-        paidAt: new Date(),
-        email: session.customer_details?.email || session.customer_email || undefined,
-        stripePaymentIntent:
-          typeof session.payment_intent === 'string'
-            ? session.payment_intent
-            : session.payment_intent?.id,
-        shippingName: name || undefined,
-        shippingLine1: shipping?.line1 || undefined,
-        shippingLine2: shipping?.line2 || undefined,
-        shippingCity: shipping?.city || undefined,
-        shippingState: shipping?.state || undefined,
-        shippingPostal: shipping?.postal_code || undefined,
-        shippingCountry: shipping?.country || undefined,
-      },
+    await this.prisma.$transaction(async (tx) => {
+      const order = await tx.order.findUnique({ where: { id: orderId } });
+      if (!order) return;
+      if (!['DRAFT', 'AWAITING_PAYMENT'].includes(order.status)) return;
+
+      let editionNumber: number | undefined;
+      let editionSize: number | undefined;
+
+      if (order.productType === 'PLOTTED_ORIGINAL' && order.editionNumber == null) {
+        await tx.editionCounter.upsert({
+          where: { id: 'plotted_original' },
+          create: { id: 'plotted_original', next: 1, size: 25 },
+          update: {},
+        });
+        // Atomic claim: RETURNING next is post-increment, so edition = next - 1
+        const claimed = await tx.editionCounter.update({
+          where: { id: 'plotted_original' },
+          data: { next: { increment: 1 } },
+        });
+        editionNumber = claimed.next - 1;
+        editionSize = claimed.size;
+      }
+
+      await tx.order.update({
+        where: { id: orderId },
+        data: {
+          status: 'PAID',
+          paidAt: new Date(),
+          email:
+            session.customer_details?.email ||
+            session.customer_email ||
+            undefined,
+          stripePaymentIntent:
+            typeof session.payment_intent === 'string'
+              ? session.payment_intent
+              : session.payment_intent?.id,
+          shippingName: name || undefined,
+          shippingLine1: shipping?.line1 || undefined,
+          shippingLine2: shipping?.line2 || undefined,
+          shippingCity: shipping?.city || undefined,
+          shippingState: shipping?.state || undefined,
+          shippingPostal: shipping?.postal_code || undefined,
+          shippingCountry: shipping?.country || undefined,
+          editionNumber,
+          editionSize,
+        },
+      });
     });
   }
 
@@ -253,16 +331,33 @@ export class OrdersService {
     amountCents: number;
     currency: string;
     fishLengthIn: number | null;
+    editionNumber: number | null;
+    editionSize: number | null;
     email: string | null;
     trackingNumber: string | null;
     paidAt: Date | null;
     createdAt: Date;
-    rendition?: { previewKey: string | null; estPlotSeconds: number | null };
+    rendition?: {
+      previewKey: string | null;
+      previewCleanKey?: string | null;
+      estPlotSeconds: number | null;
+      paperWidthMm: number | null;
+      paperHeightMm: number | null;
+      seed: number;
+      styleParams: unknown;
+      uploadId: string;
+    };
   }) {
+    const paid = PAID_STATUSES.includes(order.status);
     let previewUrl: string | null = null;
     if (order.rendition?.previewKey) {
-      previewUrl = await this.storage.presignGet(order.rendition.previewKey);
+      const key =
+        paid && order.rendition.previewCleanKey
+          ? order.rendition.previewCleanKey
+          : order.rendition.previewKey;
+      previewUrl = await this.storage.presignGet(key);
     }
+
     return {
       id: order.id,
       renditionId: order.renditionId,
@@ -271,12 +366,26 @@ export class OrdersService {
       amountCents: order.amountCents,
       currency: order.currency,
       fishLengthIn: order.fishLengthIn,
+      editionNumber: order.editionNumber,
+      editionSize: order.editionSize,
       email: order.email,
       trackingNumber: order.trackingNumber,
       paidAt: order.paidAt,
       createdAt: order.createdAt,
       previewUrl,
       estPlotSeconds: order.rendition?.estPlotSeconds ?? null,
+      paperWidthMm: order.rendition?.paperWidthMm ?? null,
+      paperHeightMm: order.rendition?.paperHeightMm ?? null,
+      paid,
+      // Locked recipe so the buyer can reorder the same print (other product type)
+      reorder: order.rendition
+        ? {
+            renditionId: order.renditionId,
+            uploadId: order.rendition.uploadId,
+            seed: order.rendition.seed,
+            styleParams: order.rendition.styleParams,
+          }
+        : null,
     };
   }
 
@@ -289,6 +398,8 @@ export class OrdersService {
     amountCents: number;
     currency: string;
     fishLengthIn: number | null;
+    editionNumber: number | null;
+    editionSize: number | null;
     email: string | null;
     shippingName: string | null;
     shippingLine1: string | null;
@@ -305,8 +416,11 @@ export class OrdersService {
       id: string;
       svgKey: string | null;
       previewKey: string | null;
+      previewCleanKey: string | null;
       printKey: string | null;
       estPlotSeconds: number | null;
+      paperWidthMm: number | null;
+      paperHeightMm: number | null;
       seed: number;
       styleParams: unknown;
     };
@@ -316,6 +430,9 @@ export class OrdersService {
       : null;
     const previewUrl = order.rendition.previewKey
       ? await this.storage.presignGet(order.rendition.previewKey)
+      : null;
+    const previewCleanUrl = order.rendition.previewCleanKey
+      ? await this.storage.presignGet(order.rendition.previewCleanKey, 3600 * 6)
       : null;
     const printUrl = order.rendition.printKey
       ? await this.storage.presignGet(order.rendition.printKey, 3600 * 6)
@@ -328,6 +445,8 @@ export class OrdersService {
       amountCents: order.amountCents,
       currency: order.currency,
       fishLengthIn: order.fishLengthIn,
+      editionNumber: order.editionNumber,
+      editionSize: order.editionSize,
       email: order.email,
       shipping: {
         name: order.shippingName,
@@ -343,11 +462,14 @@ export class OrdersService {
       paidAt: order.paidAt,
       createdAt: order.createdAt,
       estPlotSeconds: order.rendition.estPlotSeconds,
+      paperWidthMm: order.rendition.paperWidthMm,
+      paperHeightMm: order.rendition.paperHeightMm,
       renditionId: order.rendition.id,
       seed: order.rendition.seed,
       styleParams: order.rendition.styleParams,
       svgUrl,
       previewUrl,
+      previewCleanUrl,
       printUrl,
     };
   }

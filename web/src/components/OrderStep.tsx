@@ -6,11 +6,13 @@ import {
   type QuoteResponse,
   type RenditionResponse,
 } from '../lib/api'
+import { formatPaperSize, formatPlotTime } from '../lib/format'
 import { getSessionId } from '../lib/session'
 
 type Props = {
   rendition: RenditionResponse
   fishLengthIn: number | null
+  initialProductType?: ProductType
   onBack: () => void
   onStartOver: () => void
 }
@@ -22,8 +24,16 @@ function money(cents: number): string {
   }).format(cents / 100)
 }
 
-export function OrderStep({ rendition, fishLengthIn, onBack, onStartOver }: Props) {
-  const [productType, setProductType] = useState<ProductType>('PLOTTED_ORIGINAL')
+export function OrderStep({
+  rendition,
+  fishLengthIn,
+  initialProductType,
+  onBack,
+  onStartOver,
+}: Props) {
+  const [productType, setProductType] = useState<ProductType>(
+    initialProductType ?? 'PLOTTED_ORIGINAL',
+  )
   const [quotes, setQuotes] = useState<Record<ProductType, QuoteResponse | null>>({
     PLOTTED_ORIGINAL: null,
     GICLEE: null,
@@ -74,6 +84,8 @@ export function OrderStep({ rendition, fishLengthIn, onBack, onStartOver }: Prop
   }
 
   const selected = quotes[productType]
+  const paper = formatPaperSize(rendition.paperWidthMm, rendition.paperHeightMm)
+  const plot = formatPlotTime(rendition.estPlotSeconds)
 
   return (
     <section className="mx-auto flex min-h-dvh w-full max-w-3xl flex-col gap-8 px-4 py-10 sm:px-8">
@@ -105,11 +117,32 @@ export function OrderStep({ rendition, fishLengthIn, onBack, onStartOver }: Prop
         />
       )}
 
+      {(paper || plot) && (
+        <dl className="grid gap-3 text-sm sm:grid-cols-2">
+          {paper && (
+            <div>
+              <dt className="text-[11px] uppercase tracking-[0.18em] text-ink/40">
+                Paper size
+              </dt>
+              <dd className="mt-1 text-ink/80">{paper}</dd>
+            </div>
+          )}
+          {plot && (
+            <div>
+              <dt className="text-[11px] uppercase tracking-[0.18em] text-ink/40">
+                Est. plot time
+              </dt>
+              <dd className="mt-1 text-ink/80">{plot.replace(/^~/, '')}</dd>
+            </div>
+          )}
+        </dl>
+      )}
+
       <div className="grid gap-3 sm:grid-cols-2">
         <ProductCard
           active={productType === 'PLOTTED_ORIGINAL'}
           title="Plotted original"
-          body="Drawn on an AxiDraw, signed and editioned. The physical ink path of your catch."
+          body="Drawn on an AxiDraw, signed and editioned (limited to 25). The physical ink path of your catch."
           price={quotes.PLOTTED_ORIGINAL ? money(quotes.PLOTTED_ORIGINAL.amountCents) : '…'}
           onClick={() => setProductType('PLOTTED_ORIGINAL')}
         />

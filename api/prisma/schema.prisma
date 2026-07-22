@@ -22,22 +22,26 @@ model Upload {
 }
 
 model Rendition {
-  id             String          @id @default(cuid())
-  uploadId       String
-  upload         Upload          @relation(fields: [uploadId], references: [id])
-  seed           Int
-  styleParams    Json
-  status         RenditionStatus @default(QUEUED)
-  stage          String?
-  matteScore     Float?
-  svgKey         String?
-  previewKey     String?
-  printKey       String?
-  estPlotSeconds Int?
-  failureReason  String?
-  createdAt      DateTime        @default(now())
-  completedAt    DateTime?
-  orders         Order[]
+  id              String          @id @default(cuid())
+  uploadId        String
+  upload          Upload          @relation(fields: [uploadId], references: [id])
+  seed            Int
+  styleParams     Json
+  status          RenditionStatus @default(QUEUED)
+  stage           String?
+  matteScore      Float?
+  svgKey          String?
+  previewKey      String?
+  /// Unwatermarked preview — only exposed after payment
+  previewCleanKey String?
+  printKey        String?
+  estPlotSeconds  Int?
+  paperWidthMm    Float?
+  paperHeightMm   Float?
+  failureReason   String?
+  createdAt       DateTime        @default(now())
+  completedAt     DateTime?
+  orders          Order[]
 
   @@index([uploadId])
   @@index([status])
@@ -64,6 +68,9 @@ model Order {
   amountCents           Int
   currency              String         @default("usd")
   fishLengthIn          Float?
+  /// Plotted originals only — e.g. 3 of editionSize
+  editionNumber         Int?
+  editionSize           Int?
   email                 String?
   shippingName          String?
   shippingLine1         String?
@@ -83,6 +90,14 @@ model Order {
   @@index([sessionId])
   @@index([status])
   @@index([productType, status])
+  @@unique([productType, editionNumber])
+}
+
+/// Monotonic counter for plotted-original edition numbers
+model EditionCounter {
+  id   String @id @default("plotted_original")
+  next Int    @default(1)
+  size Int    @default(25)
 }
 
 enum ProductType {

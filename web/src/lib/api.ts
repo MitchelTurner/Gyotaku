@@ -62,11 +62,25 @@ export type RenditionResponse = {
   stage: string | null
   matteScore: number | null
   estPlotSeconds: number | null
+  paperWidthMm: number | null
+  paperHeightMm: number | null
+  fishLengthIn: number | null
   failureReason: string | null
   previewUrl: string | null
-  svgUrl: string | null
   createdAt: string
   completedAt: string | null
+}
+
+export type ShareRenditionResponse = {
+  id: string
+  status: string
+  seed: number
+  previewUrl: string
+  estPlotSeconds: number | null
+  paperWidthMm: number | null
+  paperHeightMm: number | null
+  fishLengthIn: number | null
+  styleParams: { strategy: string | null }
 }
 
 export function presignUpload(body: {
@@ -104,6 +118,10 @@ export function getRendition(id: string) {
   return request<RenditionResponse>(`/renditions/${id}`)
 }
 
+export function getShareRendition(id: string) {
+  return request<ShareRenditionResponse>(`/share/renditions/${id}`)
+}
+
 export type ProductType = 'PLOTTED_ORIGINAL' | 'GICLEE'
 
 export type QuoteResponse = {
@@ -122,6 +140,13 @@ export type CheckoutResponse = {
   productType: ProductType
 }
 
+export type ReorderRecipe = {
+  renditionId: string
+  uploadId: string
+  seed: number
+  styleParams: Record<string, unknown>
+}
+
 export type OrderResponse = {
   id: string
   renditionId: string
@@ -130,12 +155,34 @@ export type OrderResponse = {
   amountCents: number
   currency: string
   fishLengthIn: number | null
+  editionNumber: number | null
+  editionSize: number | null
   email: string | null
   trackingNumber: string | null
   paidAt: string | null
   createdAt: string
   previewUrl: string | null
   estPlotSeconds: number | null
+  paperWidthMm: number | null
+  paperHeightMm: number | null
+  paid: boolean
+  reorder: ReorderRecipe | null
+}
+
+export type OrderArtifactsResponse = {
+  orderId: string
+  productType: ProductType
+  status: string
+  editionNumber: number | null
+  editionSize: number | null
+  previewCleanUrl: string | null
+  svgUrl: string | null
+  paperWidthMm: number | null
+  paperHeightMm: number | null
+  estPlotSeconds: number | null
+  seed: number
+  styleParams: Record<string, unknown>
+  renditionId: string
 }
 
 export function quoteOrder(productType: ProductType, fishLengthIn?: number | null) {
@@ -160,6 +207,11 @@ export function createCheckout(body: {
 export function getOrder(orderId: string, sessionId: string) {
   const q = new URLSearchParams({ sessionId })
   return request<OrderResponse>(`/orders/${orderId}?${q}`)
+}
+
+export function getOrderArtifacts(orderId: string, sessionId: string) {
+  const q = new URLSearchParams({ sessionId })
+  return request<OrderArtifactsResponse>(`/orders/${orderId}/artifacts?${q}`)
 }
 
 /** Upload bytes via the API proxy (preferred) or a direct presigned S3 URL. */
