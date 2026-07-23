@@ -109,6 +109,30 @@ class StyleParams:
     # Fraction of edge-pass strokes drawn perpendicular to flow (scale ticks)
     edge_pass_crossgrain: float = 0.40
 
+    # Photo-faithful detail — continuous lines from the image (not orientation swirls)
+    detail_silhouette_enabled: bool = True
+    detail_silhouette_stride: int = 2
+    detail_silhouette_double: bool = True  # inset rim for stronger fish outline
+    detail_eye_enabled: bool = True
+    detail_eye_stride: float = 1.5
+    detail_edge_enabled: bool = True
+    detail_edge_stride: int = 2
+    detail_edge_min_points: int = 10
+    detail_edge_min_length_px: float = 28.0
+    detail_edge_max_paths: int = 180
+    detail_ridge_enabled: bool = True
+    detail_ridge_stride: int = 2
+    detail_ridge_min_length_px: float = 36.0
+    detail_ridge_max_paths: int = 90
+    # Off by default — iso-luminance bands read as topo swirls, not fish anatomy
+    detail_contour_enabled: bool = False
+    detail_contour_blend: float = 0.35  # 0–1 how many iso-luminance form lines to keep
+    detail_contour_stride: int = 3
+    detail_contour_min_length_px: float = 70.0
+    detail_contour_max_paths: int = 40
+    # Scale down pure flowfield fill so feature lines stay readable
+    detail_flowfield_seed_scale: float = 0.22
+
     # Output
     douglas_peucker_epsilon_mm: float = 0.04
     optimize_time_budget_s: float = 2.0
@@ -224,6 +248,22 @@ def resolve_params(
     data["posterize_levels"] = max(3, min(6, levels))
     cg = float(data.get("edge_pass_crossgrain", 0.4))
     data["edge_pass_crossgrain"] = max(0.0, min(1.0, cg))
+    data["detail_contour_blend"] = max(
+        0.0, min(1.0, float(data.get("detail_contour_blend", 0.35)))
+    )
+    data["detail_flowfield_seed_scale"] = max(
+        0.12, min(1.0, float(data.get("detail_flowfield_seed_scale", 0.22)))
+    )
+    for flag in (
+        "detail_silhouette_enabled",
+        "detail_silhouette_double",
+        "detail_eye_enabled",
+        "detail_edge_enabled",
+        "detail_ridge_enabled",
+        "detail_contour_enabled",
+    ):
+        if flag in data:
+            data[flag] = bool(data[flag])
     # Clamp / clear fish length
     fl = data.get("fish_length_in")
     if fl is None or fl == "":

@@ -49,9 +49,11 @@ def simplify_paths(paths: list[Path], epsilon_mm: float, px_to_mm: float) -> lis
     eps_px = epsilon_mm / max(px_to_mm, 1e-9)
     out: list[Path] = []
     for p in paths:
-        simp = douglas_peucker(p.points.astype(np.float64), eps_px)
+        # Keep silhouette / anatomy denser than fill strokes
+        local_eps = eps_px * (0.35 if getattr(p, "kind", "fill") == "detail" else 1.0)
+        simp = douglas_peucker(p.points.astype(np.float64), local_eps)
         if len(simp) >= 2:
-            out.append(Path(points=simp.astype(np.float32)))
+            out.append(Path(points=simp.astype(np.float32), kind=p.kind))
     return out
 
 
@@ -113,7 +115,7 @@ def reorder_paths(paths: list[Path], time_budget_s: float) -> list[Path]:
         pts = paths[idx].points
         if rev:
             pts = pts[::-1].copy()
-        result.append(Path(points=pts.astype(np.float32)))
+        result.append(Path(points=pts.astype(np.float32), kind=paths[idx].kind))
 
     return _two_opt(result, ops, op_budget)
 

@@ -104,22 +104,48 @@ def paths_to_svg(
             f'data-seed="{seed}" data-image-hash="{escape(image_hash)}" '
             f'data-style="{escape(style_fingerprint)}"{life}>'
         ),
-        "<!-- gyotaku plotter output: paths only, single black layer -->",
-        '<g id="pen-black" fill="none" stroke="#000000" stroke-width="0.35" '
+        "<!-- gyotaku plotter output: fill then anatomy (detail drawn heavier) -->",
+        '<g id="pen-fill" fill="none" stroke="#000000" stroke-width="0.32" '
         'stroke-linecap="round" stroke-linejoin="round">',
     ]
     sx = layout.px_to_mm
     ox = layout.offset_x_mm
     oy = layout.offset_y_mm
-    for path in paths:
-        pts = path.points
-        if len(pts) < 2:
+
+    def _emit(path_list: list, group_close: bool = False) -> None:
+        for path in path_list:
+            pts = path.points
+            if len(pts) < 2:
+                continue
+            cmds = [f"M {ox + pts[0, 0] * sx:.4f} {oy + pts[0, 1] * sx:.4f}"]
+            for i in range(1, len(pts)):
+                cmds.append(f"L {ox + pts[i, 0] * sx:.4f} {oy + pts[i, 1] * sx:.4f}")
+            parts.append(f'<path d="{" ".join(cmds)}"/>')
+        if group_close:
+            parts.append("</g>")
+
+    fill_paths = [p for p in paths if getattr(p, "kind", "fill") != "detail"]
+    detail_paths = [p for p in paths if getattr(p, "kind", "fill") == "detail"]
+    _emit(fill_paths, group_close=True)
+    parts.append(
+        '<g id="pen-detail" fill="none" stroke="#000000" stroke-width="0.5" '
+        'stroke-linecap="round" stroke-linejoin="round">'
+    )
+    _emit(detail_paths, group_close=True)
+    # Re-stroke only long closed outlines (silhouette) for ink weight — not short ridges
+    emphasis = []
+    for p in detail_paths:
+        pts = p.points
+        if len(pts) < 24:
             continue
-        cmds = [f"M {ox + pts[0, 0] * sx:.4f} {oy + pts[0, 1] * sx:.4f}"]
-        for i in range(1, len(pts)):
-            cmds.append(f"L {ox + pts[i, 0] * sx:.4f} {oy + pts[i, 1] * sx:.4f}")
-        parts.append(f'<path d="{" ".join(cmds)}"/>')
-    parts.append("</g>")
+        if float(np.linalg.norm(pts[0] - pts[-1])) < 3.0:
+            emphasis.append(p)
+    if emphasis:
+        parts.append(
+            '<g id="pen-detail-emphasis" fill="none" stroke="#000000" stroke-width="0.4" '
+            'stroke-linecap="round" stroke-linejoin="round">'
+        )
+        _emit(emphasis, group_close=True)
     parts.append("</svg>")
     parts.append("")
     return "\n".join(parts)
@@ -150,14 +176,24 @@ def render_preview_png(
 
     ink = np.zeros((h, w), dtype=np.float32)
     mm_to_px = scale
-    for path in paths:
-        pts = path.points
-        xs = layout.offset_x_mm + pts[:, 0] * layout.px_to_mm
-        ys = layout.offset_y_mm + pts[:, 1] * layout.px_to_mm
-        pix = np.stack([xs * mm_to_px, ys * mm_to_px], axis=1)
-        pix = np.round(pix).astype(np.int32)
-        if len(pix) >= 2:
-            cv2.polylines(ink, [pix], isClosed=False, color=1.0, thickness=1, lineType=cv2.LINE_AA)
+
+    def _stroke(path_list: list, thickness: int, strength: float) -> None:
+        for path in path_list:
+            pts = path.points
+            xs = layout.offset_x_mm + pts[:, 0] * layout.px_to_mm
+            ys = layout.offset_y_mm + pts[:, 1] * layout.px_to_mm
+            pix = np.stack([xs * mm_to_px, ys * mm_to_px], axis=1)
+            pix = np.round(pix).astype(np.int32)
+            if len(pix) >= 2:
+                cv2.polylines(
+                    ink, [pix], isClosed=False, color=strength, thickness=thickness, lineType=cv2.LINE_AA
+                )
+
+    fill_paths = [p for p in paths if getattr(p, "kind", "fill") != "detail"]
+    detail_paths = [p for p in paths if getattr(p, "kind", "fill") == "detail"]
+    _stroke(fill_paths, thickness=1, strength=0.78)
+    # Anatomy on top, heavier — silhouette / eye / gill must read
+    _stroke(detail_paths, thickness=2, strength=1.0)
 
     # Slight ink bleed
     if params.ink_bleed_px > 0:
@@ -187,14 +223,24 @@ def render_print_png(
 
     canvas = np.ones((h, w, 3), dtype=np.uint8) * 255
     ink = np.zeros((h, w), dtype=np.uint8)
-    for path in paths:
+    fill_paths = [p for p in paths if getattr(p, "kind", "fill") != "detail"]
+    detail_paths = [p for p in paths if getattr(p, "kind", "fill") == "detail"]
+    for path in fill_paths:
         pts = path.points
         xs = layout.offset_x_mm + pts[:, 0] * layout.px_to_mm
         ys = layout.offset_y_mm + pts[:, 1] * layout.px_to_mm
         pix = np.stack([xs * scale, ys * scale], axis=1)
         pix = np.round(pix).astype(np.int32)
         if len(pix) >= 2:
-            cv2.polylines(ink, [pix], isClosed=False, color=255, thickness=1, lineType=cv2.LINE_AA)
+            cv2.polylines(ink, [pix], isClosed=False, color=220, thickness=1, lineType=cv2.LINE_AA)
+    for path in detail_paths:
+        pts = path.points
+        xs = layout.offset_x_mm + pts[:, 0] * layout.px_to_mm
+        ys = layout.offset_y_mm + pts[:, 1] * layout.px_to_mm
+        pix = np.stack([xs * scale, ys * scale], axis=1)
+        pix = np.round(pix).astype(np.int32)
+        if len(pix) >= 2:
+            cv2.polylines(ink, [pix], isClosed=False, color=255, thickness=2, lineType=cv2.LINE_AA)
 
     if params.ink_bleed_px > 0:
         # Scale bleed with DPI relative to preview (~1600px ≈ preview)

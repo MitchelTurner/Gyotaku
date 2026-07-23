@@ -12,6 +12,7 @@ from collections import defaultdict
 import numpy as np
 
 from gyotaku.marks.base import MarkStrategy, Path
+from gyotaku.marks.detail import build_detail_paths
 from gyotaku.params import StyleParams
 from gyotaku.tonal import VectorField
 
@@ -92,16 +93,41 @@ class FlowfieldStrategy(MarkStrategy):
         rng: np.random.Generator,
     ) -> list[Path]:
         h, w = luminance.shape
+        # Photo feature lines first (fin / gill / eye / form) so fill can't bury them
+        detail_paths = build_detail_paths(
+            luminance=luminance, edges=edges, matte=matte, params=params
+        )
+
         seeds = self._density_seeds(luminance, matte, params, rng)
-        cell = max(0.75, params.min_separation_dark * 0.9)
+        # Thin the swirl fill when detail passes are on — keeps anatomy readable
+        detail_on = (
+            params.detail_silhouette_enabled
+            or params.detail_eye_enabled
+            or params.detail_edge_enabled
+            or params.detail_ridge_enabled
+            or params.detail_contour_enabled
+        )
+        if detail_on and detail_paths:
+            scale = float(params.detail_flowfield_seed_scale)
+            keep = max(80, int(len(seeds) * scale))
+            if keep < len(seeds):
+                seeds = list(seeds[:keep])
+
+        # Wider fill spacing when anatomy lines are present
+        sep_boost = 1.55 if (detail_on and detail_paths) else 1.0
+        cell = max(0.75, params.min_separation_dark * 0.9 * sep_boost)
         grid = SpatialHash(cell)
         paths: list[Path] = []
 
-        # Shuffle seeds for less directional bias; already rng-ordered from choice
+        # Reserve space around photo feature lines so fill doesn't overwrite them
+        for dp in detail_paths:
+            grid.insert_polyline(dp.points, stride=max(1, int(params.step_px)))
+            paths.append(dp)
+
         for sx, sy in seeds:
             lum = _sample_field(luminance, sx, sy)
-            sep = _separation_for_luminance(lum, params)
-            if grid.too_close(sx, sy, sep * 0.85):
+            sep = _separation_for_luminance(lum, params) * sep_boost
+            if grid.too_close(sx, sy, sep * 0.9):
                 continue
             pts = self._trace_stroke(sx, sy, luminance, orientation, matte, params, grid)
             if pts is None or len(pts) < params.min_stroke_points:
@@ -110,8 +136,9 @@ class FlowfieldStrategy(MarkStrategy):
             paths.append(Path(points=arr))
             grid.insert_polyline(arr, stride=max(1, int(params.step_px)))
 
-        # Edge accumulation pass — denser short strokes along rims
-        if params.edge_pass_density > 0:
+        # Short edge ticks only when we lack continuous anatomy polylines.
+        # Otherwise ticks recreate the "swirls in a fish shape" look.
+        if params.edge_pass_density > 0 and not (detail_on and detail_paths):
             edge_paths = self._edge_pass(
                 edges, luminance, orientation, matte, params, rng, grid
             )

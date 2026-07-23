@@ -85,6 +85,7 @@ function styleParamsFromControls(c: StyleControls): Record<string, unknown> {
       min_separation_dark: 1.6,
       orientation_sigma: 3.0,
       max_stroke_length_px: 70,
+      detail_flowfield_seed_scale: 0.18,
     })
   } else if (c.density === 'dense') {
     Object.assign(params, {
@@ -96,9 +97,9 @@ function styleParamsFromControls(c: StyleControls): Record<string, unknown> {
       max_stroke_length_px: 45,
       edge_pass_density: 0.65,
       edge_pass_length_px: 32,
+      detail_flowfield_seed_scale: 0.28,
     })
   } else {
-    // Balanced — photo-faithful defaults (local anatomy, not silhouette swirls)
     Object.assign(params, {
       posterize_levels: 5,
       seed_count: 5500,
@@ -107,8 +108,19 @@ function styleParamsFromControls(c: StyleControls): Record<string, unknown> {
       edge_pass_density: 0.55,
       edge_pass_length_px: 28,
       edge_pass_crossgrain: 0.4,
+      detail_flowfield_seed_scale: 0.22,
     })
   }
+
+  // Photo anatomy — silhouette / eye / edges over swirl fill (no topo contours)
+  Object.assign(params, {
+    detail_silhouette_enabled: true,
+    detail_silhouette_double: true,
+    detail_eye_enabled: true,
+    detail_edge_enabled: true,
+    detail_ridge_enabled: true,
+    detail_contour_enabled: false,
+  })
 
   if (c.ink === 'soft') {
     Object.assign(params, {

@@ -139,8 +139,14 @@ def _smooth_orientation_sign(dx: np.ndarray, dy: np.ndarray) -> tuple[np.ndarray
 
 
 def edge_map(luminance: np.ndarray, matte: np.ndarray, low: int, high: int) -> np.ndarray:
+    """Multi-scale edges so fins / gill / eye survive Canny thresholding."""
     u8 = np.clip(luminance * 255.0, 0, 255).astype(np.uint8)
-    edges = cv2.Canny(u8, low, high)
+    # Mild unsharp so scale rows and fin rays pop before Canny
+    blur = cv2.GaussianBlur(u8, (0, 0), 1.4)
+    sharp = cv2.addWeighted(u8, 1.45, blur, -0.45, 0)
+    e1 = cv2.Canny(sharp, low, high)
+    e2 = cv2.Canny(cv2.GaussianBlur(u8, (0, 0), 0.8), max(20, low - 10), high)
+    edges = cv2.bitwise_or(e1, e2)
     # Restrict to subject; dilate slightly for rim accumulation
     mask = (matte > 0.25).astype(np.uint8) * 255
     edges = cv2.bitwise_and(edges, mask)

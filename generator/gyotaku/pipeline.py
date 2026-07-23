@@ -32,7 +32,7 @@ ProgressCallback = Callable[[str, str], None]
 
 
 def _scale_path(path: StrokePath, scale: float) -> StrokePath:
-    return StrokePath(points=(path.points * scale).astype(np.float32))
+    return StrokePath(points=(path.points * scale).astype(np.float32), kind=path.kind)
 
 
 def _maybe_downsample_for_marks(tonal: TonalMaps, mark_long_edge: int) -> tuple[TonalMaps, float]:

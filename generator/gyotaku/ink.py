@@ -83,8 +83,12 @@ def apply_ink_physics(
         if len(pts) < 2:
             continue
 
+        is_detail = getattr(path, "kind", "fill") == "detail"
+        # Anatomy strokes must survive ink physics — light jitter only, no dropout
+        jitter_amp = params.jitter_amplitude * (0.2 if is_detail else 1.0)
+
         # --- Jitter: lateral displacement along local normal ---
-        if params.jitter_amplitude > 0:
+        if jitter_amp > 0:
             for i in range(len(pts)):
                 x, y = pts[i]
                 if i == 0:
@@ -98,14 +102,14 @@ def apply_ink_physics(
                     continue
                 tx, ty = tx / mag, ty / mag
                 nx, ny = -ty, tx
-                amp = params.jitter_amplitude * (0.35 + 0.65 * _sample(region, x, y))
+                amp = jitter_amp * (0.35 + 0.65 * _sample(region, x, y))
                 disp = amp * _sample(jitter_n, x, y)
                 pts[i, 0] += nx * disp
                 pts[i, 1] += ny * disp
 
         # --- Dropout: remove low-contact segment runs ---
         keep = np.ones(len(pts), dtype=bool)
-        if params.dropout_threshold > 0:
+        if (not is_detail) and params.dropout_threshold > 0:
             for i in range(len(pts)):
                 x, y = pts[i]
                 c = _sample(contact, x, y)
@@ -119,7 +123,7 @@ def apply_ink_physics(
         segments = _split_by_mask(pts, keep)
         for seg in segments:
             if len(seg) >= 2:
-                out.append(Path(points=seg.astype(np.float32)))
+                out.append(Path(points=seg.astype(np.float32), kind=path.kind))
 
     return out
 

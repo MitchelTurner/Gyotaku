@@ -17,6 +17,8 @@ class Path:
     """A single polyline in processing-pixel coordinates (cropped subject space)."""
 
     points: np.ndarray  # Nx2 float32, columns (x, y)
+    # "detail" = photo feature line (silhouette / gill / eye) — protected from dropout
+    kind: str = "fill"
 
 
 class MarkStrategy(ABC):

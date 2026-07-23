@@ -16,5 +16,13 @@
   "edge_pass_density": 0.55,
   "edge_pass_length_px": 28.0,
   "edge_pass_spacing": 1.0,
-  "edge_pass_crossgrain": 0.40
+  "edge_pass_crossgrain": 0.40,
+  "detail_silhouette_enabled": true,
+  "detail_silhouette_double": true,
+  "detail_eye_enabled": true,
+  "detail_edge_enabled": true,
+  "detail_ridge_enabled": true,
+  "detail_contour_enabled": false,
+  "detail_contour_blend": 0.35,
+  "detail_flowfield_seed_scale": 0.22
 }
