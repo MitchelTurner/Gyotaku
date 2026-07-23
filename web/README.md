@@ -1,11 +1,18 @@
-# Gyotaku Web — Phase 2
+# Gyotaku Web
 
-Mobile-first upload → generate → preview UI for fish artwork.
+Mobile-first React app: upload → size → generate → preview → order. Also hosts the **operator console** at `/operator`.
+
+See also:
+
+- [Root README](../README.md)
+- [Deployment](../docs/DEPLOYMENT.md)
+- [Operator](../docs/OPERATOR.md)
+- [Affiliates](../docs/AFFILIATES.md)
 
 ## Dev
 
 ```bash
-# API must be running on :3000 (and worker + infra)
+# API + worker + docker compose should be running
 cd web
 npm install
 npm run dev
@@ -13,25 +20,30 @@ npm run dev
 
 Vite proxies `/api` → `http://localhost:3000`.
 
-## Railway (live site)
-
-Create a **separate** service (not the worker):
-
-1. New service → same GitHub repo  
-2. **Root Directory** = `web`  
-3. **Do not set** `VITE_API_URL` (leave empty so the app uses `/api`)  
-4. Runtime variable: `API_PROXY_TARGET=https://gyotaku.up.railway.app`  
-5. Deploy → open **this** service’s public URL (`gyotaku-web.up.railway.app`)
-
-Caddy proxies `/api/*` → the API (avoids CORS). The worker URL is not the frontend.
-
-## Flow
+## Customer flow
 
 1. Upload (client downscales to 2048 long edge)
 2. Enter fish length (life-size) or fit to paper
-3. Create rendition, poll stages
-4. Preview with style / density / ink / length controls
-5. **Order this print** → plotted original or giclée → Stripe Checkout
-6. Return URLs: `/?order=success|cancel&orderId=…`
+3. Create rendition, poll honest processing stages
+4. Preview — density / ink / species / side; compare strategies; share `/?p=`
+5. Order — plotted original, giclée, or framed giclée; gift note; waitlist if plots closed
+6. Stripe return: `/?order=success|cancel&orderId=…` (paid unlock for clean preview + SVG)
 
-Set API `PUBLIC_WEB_URL` to this site’s origin so Stripe redirects work.
+Captain QR entry: `/?ref=<code>` (sticky in localStorage for checkout attribution).
+
+## Operator
+
+`/operator` — paste `OPERATOR_TOKEN`. Tabs: Fulfillment, Captains, Waitlist, Failed jobs, Metrics.
+
+## Railway
+
+Create a **separate** service (not the worker):
+
+1. Root Directory = `web`
+2. **Do not set** `VITE_API_URL` (use same-origin `/api`)
+3. Runtime: `API_PROXY_TARGET=https://<your-api-host>`
+4. Deploy → open **this** service’s public URL
+
+Caddy proxies `/api/*` → the API. The worker URL is never the frontend.
+
+Set API `PUBLIC_WEB_URL` to this site’s origin for Stripe redirects.

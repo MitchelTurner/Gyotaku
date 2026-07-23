@@ -1,88 +1,124 @@
-# Gyotaku Plotter Prints
+# Gyotaku
 
-Upload a salmon photo → gyotaku-style pen-plotter artwork → order a hand-plotted original or giclée.
+Turn a salmon photo into gyotaku-style pen-plotter art — then sell a hand-plotted original or a giclée.
 
-**Current focus: Phase 3** — Stripe checkout + operator fulfillment on top of the Phase 2 preview UI.
+**Live**
+
+| Service | URL |
+|---|---|
+| Web app | https://gyotaku-web.up.railway.app |
+| API | https://gyotaku.up.railway.app |
+
+Guests upload a catch, preview a watermarked print, and check out through Stripe. Captains can share a QR code so charters earn a commission. Operators fulfill plots, prints, and payouts from `/operator`.
+
+---
+
+## Packages
 
 | Package | Role |
 |---|---|
-| [`web/`](web/README.md) | React upload → generate → preview UI |
-| [`api/`](api/README.md) | NestJS upload / rendition preview API |
+| [`web/`](web/README.md) | React customer UI + operator console |
+| [`api/`](api/README.md) | NestJS API, Stripe, Postgres, Redis jobs |
 | [`generator/`](generator/README.md) | Offline CLI + Python queue worker |
 
+Deeper guides live in [`docs/`](docs/):
+
+| Doc | Topic |
+|---|---|
+| [Deployment](docs/DEPLOYMENT.md) | Railway services, env vars, Failed to fetch |
+| [Operator](docs/OPERATOR.md) | Fulfillment, waitlist, metrics, labels |
+| [Captain affiliates](docs/AFFILIATES.md) | QR referral program + commissions |
+| [Pricing](docs/PRICING.md) | Length-band SKUs, shipping, framed upsell |
+
+---
+
+## Local development
+
 ```bash
-docker compose up -d
+docker compose up -d   # Postgres, Redis, MinIO
+
 cd api && cp .env.example .env && npm i && npx prisma migrate deploy && npm run start:dev
 cd generator && pip install -e ".[worker]" && python worker/worker.py
 cd web && npm i && npm run dev
 ```
 
-Phase 3 adds **Order this print** → Stripe Checkout (plotted original or giclée) and an operator queue at `GET /operator/orders` (header `x-operator-token`).
-
-### Railway
-
-Deploy **three services** (not one):
-
-1. **web** — root directory `web/` — **this is the live site**
-2. **api** — root directory `api/`
-3. **worker** — root directory `generator/` (JSON health only — not the UI)
-
-If you only have a generator/worker service, add a new service from the same repo with **Root Directory = `web`**, enable a public domain, set build-time `VITE_API_URL` to your API origin, and deploy. Opening the worker URL will never show the React app.
-
-**Worker Variables are separate from the API** — linking Redis to the project is not enough; each service needs its own references:
-
-1. Open the **worker** service (not Redis, not API)
-2. **Variables** → **+ New Variable** → **Add Reference**
-3. Select your Redis service → `REDIS_URL` (name the variable `REDIS_URL`)
-4. Repeat for Postgres → `DATABASE_URL`
-5. Copy the same `S3_*` values you use on the API
-6. Redeploy the worker
-
-If the Redis service is named something other than `Redis`, the reference uses that name (Railway shows it in the picker). Worker `/health` returns `503` with `"missing":["REDIS_URL"]` until this is set.
-
-**If the web UI says Failed to fetch**, fix Railway variables then redeploy api + web:
-
-1. **api** → delete `CORS_ORIGINS` (a leftover `localhost:5173` blocks `gyotaku-web`)
-2. **web** → delete `VITE_API_URL` (app should call same-origin `/api`)
-3. **web** → add `API_PROXY_TARGET=https://gyotaku.up.railway.app`
-
-**Storage:** set real `S3_*` on api + worker (not `localhost:9000`).
+- Web: http://localhost:5173 (proxies `/api` → API)
+- API: http://localhost:3000
+- Operator UI: http://localhost:5173/operator (token = `OPERATOR_TOKEN`)
 
 ---
 
-## How it works when finished
+## Product flow
 
-### For the customer
+### Customer
 
-1. **Upload** a salmon photo from their phone (drag-drop or camera roll).
-2. **Wait ~20–90s** while the generator runs: cut the fish from the background → turn tone into pen strokes → apply light “ink” imperfections → make an SVG + preview.
-3. **Preview** a watermarked print on paper texture. Tweak style (density / ink character). Each tweak makes a new version; good combos are cached.
-4. If the photo is bad (busy background, blur, etc.), they get a clear “try another photo” message — not a muddy fake print.
-5. **Order** size + type:
-   - **Plotted original** — hand-drawn on an AxiDraw, signed/editioned
-   - **Giclée** — high-res print, no hand plotting
-6. Pay via Stripe → shipping → done. No account until checkout.
+1. **Upload** a fish photo (phone camera welcome).
+2. **Size** — enter nose-to-tail length for a life-size print, or fit to paper.
+3. **Generate** (~20–90s) — matte → pen strokes → SVG + watermarked preview.
+4. **Tweak** density, ink, species/side tags; compare strategies; share with `/?p=<renditionId>`.
+5. **Order**
+   - Plotted original (editioned, AxiDraw) — or join the **waitlist** if the plot queue is closed
+   - Giclée, with optional **framed** upsell
+   - Optional gift note; domestic shipping (US/CA) as a flat Stripe line item
+6. Pay via Stripe → clean preview + SVG unlock after payment → ship.
 
-### Behind the scenes
+Prices use **length-band SKUs** (S / M / L / XL). See [Pricing](docs/PRICING.md).
+
+### Captain (affiliate)
+
+1. Operator creates a captain under **Ops → Captains**.
+2. Captain prints the QR (`/?ref=<code>`).
+3. Guest scans → orders a print → captain earns a % of the product (default 10%).
+4. Operator marks commissions paid when settling up.
+
+See [Captain affiliates](docs/AFFILIATES.md).
+
+### Operator
+
+Open **`/operator`** with `OPERATOR_TOKEN`:
+
+- **Fulfillment** — plot / print / pack / buy shipping label
+- **Captains** — QR links, owed commissions
+- **Waitlist** — emails when plotted originals are closed
+- **Failed jobs** — dead-letter retry
+- **Metrics** — p50/p95 generate time, reject rates
+
+See [Operator](docs/OPERATOR.md).
+
+### Architecture
 
 ```
-Phone → website → NestJS API → BullMQ/Redis ──> Python worker ──> S3
-                          │                         │
-                          └─────── Postgres ────────┘
+Phone → web → NestJS API → Redis queue ──> Python worker ──> S3/R2
+                 │                              │
+                 └────────── Postgres ──────────┘
 ```
 
-Every artwork stores its **seed + settings**, so a reprint or re-plot is identical.
+Each artwork stores **seed + style params**, so reprints and re-plots match.
 
-### For the operator
+---
 
-- Open **`/operator`** on the web app (token = `OPERATOR_TOKEN`): fulfillment, captains/affiliates, failed-job retry, metrics.
-- **Captain affiliates:** create a captain under Ops → Captains, print their QR (`/?ref=code`). Guests scan → order; captain earns a % of the product (default 10%). Mark commissions paid when you settle up.
-- Pricing uses length-band SKUs (S/M/L/XL) plus flat domestic shipping; gift note and framed giclée upsell at checkout.
-- Originals stay limited; if plot-queue ETA exceeds `PLOTTED_QUEUE_MAX_DAYS`, that tier offers a waitlist instead of a hard close.
-- Paid giclées enqueue a 300 DPI `printKey` for POD handoff.
-- Optional EasyPost/Shippo: **Buy label + ship** writes tracking and marks SHIPPED.
-- `/health` on API + worker probes Redis, R2/S3, Stripe config and surfaces queue-depth / MinIO-default alerts (`ALERT_WEBHOOK_URL` optional).
+## Railway (short version)
 
-### What “finished” really means
+Deploy **three** services from this repo:
 
-Generator quality first (Phase 0). Phase 1 exposes it as a preview API. The product people buy is the **line work**, not the app.
+1. **web** — root `web/` — public site
+2. **api** — root `api/`
+3. **worker** — root `generator/` (health JSON only — not the UI)
+
+Worker needs its own `REDIS_URL`, `DATABASE_URL`, and `S3_*` (not inherited from API).
+
+Full checklist: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+---
+
+## Quality
+
+Generator changes should stay deterministic: `(imageHash, styleParams, seed)` → identical SVG.
+
+```bash
+cd generator && pytest -q
+# optional corpus gate (real salmon photos):
+gyotaku corpus --gate
+```
+
+See [`generator/corpus/README.md`](generator/corpus/README.md).

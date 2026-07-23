@@ -1,8 +1,8 @@
-# Gyotaku Generator — Phase 0 / worker
+# Gyotaku Generator
 
-Offline CLI that turns a photo into gyotaku-style pen-plotter artwork: **SVG paths + preview PNG**.
+Offline CLI + Redis worker that turn a photo into gyotaku-style pen-plotter artwork (**SVG paths + preview PNG**).
 
-Phase 1 adds a Redis queue worker in [`worker/`](worker/README.md) that runs the same pipeline for the NestJS API.
+The NestJS API enqueues jobs; this package consumes them. See [Deployment](../docs/DEPLOYMENT.md) and [`worker/README.md`](worker/README.md).
 
 ## Setup
 
@@ -26,34 +26,39 @@ Writes `out/artwork.svg`, `out/preview.png`, `out/meta.json`.
 
 Exit code `2` means the matte was rejected (soft failure — try another photo).
 
-## Test corpus
+## Salmon corpus
+
+Real catch photos + Wikimedia salmon live in [`corpus/`](corpus/README.md):
 
 ```bash
-gyotaku make-corpus          # synthesize 20 stand-in photos into corpus/images/
-gyotaku corpus               # regenerate all → corpus/runs/<timestamp>/ + contact sheet
+gyotaku corpus                 # regenerate + contact sheet
+gyotaku corpus --gate          # fail on metric drift vs baseline
+gyotaku corpus --write-baseline
 ```
 
-Replace the synthetic images in `corpus/images/` with real photos when available (same filenames or any `*.jpg`/`*.png`). Every generator change should re-run the corpus and be reviewed by eye.
+Do **not** run `gyotaku make-corpus` on this tree — that regenerates synthetic placeholders and wipes real photos.
 
-## Determinism & quality gates
+## Determinism & quality
 
-`(imageHash, styleParams, seed)` → byte-identical SVG. Asserted in CI:
+`(imageHash, styleParams, seed)` → byte-identical SVG.
 
 ```bash
 pytest -q
-# optional full corpus drift check (needs corpus images + rembg weights):
-gyotaku corpus --gate
 ```
 
 Optional style params: `species` (`chinook|coho|sockeye|other`) and `side` (`left|right`) nudge mark density; salmon-aware matte scoring reduces false rejects on finned silhouettes.
 
-## Architecture (this package)
+## Pipeline
 
 ```
 ingest → rembg matte → tonal maps (CLAHE / posterize / structure tensor / edges)
       → mark strategy (flowfield | contour | stipple)
       → ink physics (jitter / dropout)
-      → simplify + reorder → SVG + preview
+      → simplify + reorder → SVG + preview (+ optional 300 DPI print)
 ```
 
 `StyleParams` in `gyotaku/params.py` exposes every constant. Prefer tiny ink-physics amplitudes — if you can name the effect, it's too high.
+
+## Worker (Railway)
+
+Root directory for the worker service is **`generator/`**. It needs its own `REDIS_URL`, `DATABASE_URL`, and `S3_*` (same bucket as the API). Details: [`worker/README.md`](worker/README.md).

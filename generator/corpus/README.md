@@ -1,4 +1,4 @@
-# Phase 0 test corpus — salmon fishing
+# Salmon test corpus
 
 Twenty salmon/fish inputs for visual regression. Real user catches + Wikimedia Commons photos.
 
