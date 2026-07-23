@@ -21,7 +21,7 @@ export function HeroUpload({ busy, error, onFile, affiliate }: Props) {
           Gyotaku
         </p>
         <p className="max-w-[12rem] text-right text-[11px] uppercase tracking-[0.18em] text-sea-deep/70">
-          Pen-plotter prints
+          Fine art prints
         </p>
       </header>
 
@@ -32,8 +32,8 @@ export function HeroUpload({ busy, error, onFile, affiliate }: Props) {
           <span className="italic text-sea">as ink.</span>
         </h1>
         <p className="animate-rise-delay-2 mt-5 max-w-md text-base leading-relaxed text-ink/70 sm:text-lg">
-          Upload a fish photo. We isolate the specimen and draw it as
-          plotter-ready strokes — tone from mark density, floating on paper.
+          Upload a fish photo. We turn it into gyotaku-style ink art — then
+          print archival paper or a ready-to-hang frame.
         </p>
         {affiliate && (
           <p className="animate-rise-delay-2 mt-3 text-sm text-sea-deep/80">

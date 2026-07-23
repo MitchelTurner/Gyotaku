@@ -51,11 +51,11 @@ function nextStatuses(order: OperatorOrder): OperatorStatus[] {
 function productTypeShort(t: OperatorOrder['productType']): string {
   switch (t) {
     case 'PLOTTED_ORIGINAL':
-      return 'Plotted'
+      return 'Plotted (legacy)'
     case 'GICLEE_FRAMED':
-      return 'Framed giclée'
+      return 'Framed'
     default:
-      return 'Giclée'
+      return 'Print'
   }
 }
 
@@ -64,7 +64,6 @@ export function OperatorQueue() {
   const [authed, setAuthed] = useState(() => Boolean(getOperatorToken()))
   const [tab, setTab] = useState<Tab>('orders')
   const [orders, setOrders] = useState<OperatorOrder[]>([])
-  const [availability, setAvailability] = useState<PlottedAvailability | null>(null)
   const [failed, setFailed] = useState<FailedRendition[]>([])
   const [deadLetterDepth, setDeadLetterDepth] = useState(0)
   const [metrics, setMetrics] = useState<OperatorMetrics | null>(null)
@@ -88,7 +87,6 @@ export function OperatorQueue() {
       if (tab === 'orders') {
         const res = await listOperatorOrders(filter || undefined)
         setOrders(res.orders)
-        setAvailability(res.availability)
       } else if (tab === 'failed') {
         const res = await listFailedRenditions()
         setFailed(res.failed)
@@ -310,21 +308,17 @@ export function OperatorQueue() {
 
       {tab === 'orders' && (
         <>
-          {availability && (
-            <div className="mt-6 text-sm text-ink/65">
-              <p>
-                Plotted originals:{' '}
-                <span className={availability.open ? 'text-sea' : 'text-warn'}>
-                  {availability.open ? 'open' : 'closed'}
-                </span>
-                {availability.reason ? ` — ${availability.reason}` : ''}
-              </p>
-              <p className="mt-1 text-xs text-ink/40">
-                Queue ~{availability.queueEtaDays}d / max {availability.maxDays}d · edition{' '}
-                {Math.max(0, availability.editionNext - 1)}/{availability.editionSize}
-              </p>
-            </div>
-          )}
+          <div className="mt-6 text-sm text-ink/65">
+            <p>
+              Checkout products:{' '}
+              <span className="text-sea">fine art print</span> ·{' '}
+              <span className="text-sea">framed</span>
+              <span className="text-ink/40"> (plotted originals retired)</span>
+            </p>
+            <p className="mt-1 text-xs text-ink/40">
+              Fulfill via Prodigi — see docs/FULFILLMENT.md · download 300 DPI print from each order
+            </p>
+          </div>
 
           <div className="mt-6 flex flex-wrap gap-2">
             {['', ...STATUS_FLOW].map((s) => (

@@ -6,9 +6,9 @@ Tabs:
 
 | Tab | Purpose |
 |---|---|
-| **Fulfillment** | Paid orders: plot / print / pack / ship |
+| **Fulfillment** | Paid orders: print / pack / ship |
 | **Captains** | Affiliate QR codes + commission payouts |
-| **Waitlist** | Emails waiting for plotted originals to reopen |
+| **Waitlist** | Legacy emails (plotted originals retired) |
 | **Failed jobs** | Dead-letter / failed renditions → retry |
 | **Metrics** | Generate latency p50/p95, reject/fail rates |
 
@@ -16,23 +16,22 @@ Tabs:
 
 ## Fulfillment
 
-Statuses roughly:
+Customer checkout is **fine art print** or **framed print** only. See [FULFILLMENT.md](FULFILLMENT.md) for Prodigi.
 
-- **Plotted original:** `PAID` → `PLOTTING` → `PACKED` → `SHIPPED`
-- **Giclée / framed:** `PAID` → `PRINTING` → `PACKED` → `SHIPPED`
+Statuses:
+
+- **Print / framed:** `PAID` → `PRINTING` → `PACKED` → `SHIPPED`
+- Legacy plotted orders (if any): `PAID` → `PLOTTING` → `PACKED` → `SHIPPED`
 
 Per order you can:
 
-- Download **SVG** (plot path) or **300 DPI print** PNG
-- **Queue 300 DPI** if a giclée is missing `printKey`
-- **Buy label + ship** (EasyPost or Shippo when configured) — writes tracking and marks `SHIPPED`
-- Advance status manually with the status chips
+- Download **300 DPI print** PNG (and SVG if present)
+- **Queue 300 DPI** if missing `printKey`
+- Submit the PNG to **Prodigi** using the quote’s `fulfillmentSku` hint + Stripe shipping address
+- **Buy label + ship** (EasyPost or Shippo) if you ship yourself — or let Prodigi ship direct
+- Advance status with the status chips
 
 Orders show fish length, SKU, shipping address, gift note, and referring captain (if any).
-
-### Plot queue auto-close
-
-If outstanding plot time exceeds `PLOTTED_QUEUE_MAX_DAYS` (or the edition sells out), plotted originals close. Guests see a **waitlist** instead of checkout for that tier. Giclées stay available.
 
 ---
 
@@ -47,15 +46,6 @@ See [AFFILIATES.md](AFFILIATES.md).
 
 ---
 
-## Waitlist
+## Metrics
 
-When plotted originals are closed, guests can leave an email. This tab lists those entries so you can notify them when the queue reopens (manual outreach for now).
-
----
-
-## Failed jobs & metrics
-
-- **Failed jobs** — re-queue a rendition after a worker failure; dead-letter depth is shown.
-- **Metrics** — last 24h generate times and reject/fail rates; useful after generator changes.
-
-API also exposes deep `/health` checks and optional webhook alerts for queue depth (`ALERT_WEBHOOK_URL`).
+Generate-time percentiles and reject rates help catch model or corpus regressions after worker deploys.

@@ -144,6 +144,7 @@ export type QuoteResponse = {
   totalCents?: number
   currency: string
   label: string
+  fulfillmentSku?: string | null
   available?: boolean
   unavailableReason?: string | null
   queueEtaDays?: number | null

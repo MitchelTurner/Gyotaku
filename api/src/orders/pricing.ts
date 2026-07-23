@@ -14,6 +14,8 @@ export type PriceQuote = {
   /** Product + domestic shipping. */
   totalCents: number;
   label: string;
+  /** Suggested Prodigi catalog SKU for operator / future API submit. */
+  fulfillmentSku: string | null;
 };
 
 /** Length-band cutoffs (max inches, exclusive upper for next). Env-overridable. */
@@ -28,24 +30,29 @@ export function bandForLength(fishLengthIn: number | null | undefined): LengthBa
   return 'XL';
 }
 
+/**
+ * Retail prices sized for Prodigi fine-art POD (see docs/FULFILLMENT.md).
+ * Rough COGS+ship targets: print ~$18–50, framed ~$55–130 → ~2–2.5× retail.
+ */
 const DEFAULT_BAND_CENTS: Record<ProductType, Record<LengthBand, number>> = {
+  // Deprecated — not offered at checkout (kept for historical orders / env overrides)
   PLOTTED_ORIGINAL: {
-    S: 14_900, // $149
-    M: 18_900, // $189
-    L: 24_900, // $249
-    XL: 29_900, // $299
+    S: 14_900,
+    M: 18_900,
+    L: 24_900,
+    XL: 29_900,
   },
   GICLEE: {
-    S: 5_900, // $59
-    M: 7_900, // $79
-    L: 9_900, // $99
-    XL: 12_900, // $129
+    S: 4_900, // $49
+    M: 6_900, // $69
+    L: 8_900, // $89
+    XL: 11_900, // $119
   },
   GICLEE_FRAMED: {
-    S: 12_900, // $129
-    M: 15_900, // $159
-    L: 19_900, // $199
-    XL: 24_900, // $249
+    S: 9_900, // $99
+    M: 13_900, // $139
+    L: 17_900, // $179
+    XL: 22_900, // $229
   },
 };
 
@@ -62,14 +69,54 @@ const BAND_LABEL: Record<LengthBand, string> = {
   XL: 'Extra large',
 };
 
+/**
+ * Prodigi catalog hints (Hahnemühle German Etching + classic frame).
+ * Confirm live SKUs in the Prodigi dashboard before API submit — frame
+ * colour/mount variants change the suffix.
+ */
+const PRODIGI_PRINT_SKU: Record<LengthBand, string> = {
+  S: 'GLOBAL-HGE-12X16',
+  M: 'GLOBAL-HGE-16X20',
+  L: 'GLOBAL-HGE-18X24',
+  XL: 'GLOBAL-HGE-24X36',
+};
+
+const PRODIGI_FRAMED_SKU: Record<LengthBand, string> = {
+  S: 'GLOBAL-CFB-12X16',
+  M: 'GLOBAL-CFB-16X20',
+  L: 'GLOBAL-CFB-18X24',
+  XL: 'GLOBAL-CFB-24X36',
+};
+
 function bandPriceCents(productType: ProductType, band: LengthBand): number {
   const envKey = `PRICE_${SKU_PREFIX[productType]}_${band}_CENTS`;
   return intEnv(envKey, DEFAULT_BAND_CENTS[productType][band]);
 }
 
-/** Flat domestic shipping (US/CA) added as a Stripe line item. */
-export function shippingDomesticCents(): number {
-  return Math.max(0, intEnv('SHIPPING_DOMESTIC_CENTS', 1_400)); // $14
+/** Flat domestic shipping (US/CA) — framed is heavier/larger. */
+export function shippingDomesticCents(productType?: ProductType): number {
+  if (productType === 'GICLEE_FRAMED') {
+    return Math.max(0, intEnv('SHIPPING_FRAMED_CENTS', 1_800)); // $18
+  }
+  if (productType === 'GICLEE') {
+    return Math.max(0, intEnv('SHIPPING_PRINT_CENTS', 900)); // $9 rolled
+  }
+  // Legacy plotted / unspecified
+  return Math.max(0, intEnv('SHIPPING_DOMESTIC_CENTS', 1_400));
+}
+
+export function fulfillmentSkuFor(
+  productType: ProductType,
+  band: LengthBand,
+): string | null {
+  if (productType === 'GICLEE') return PRODIGI_PRINT_SKU[band];
+  if (productType === 'GICLEE_FRAMED') return PRODIGI_FRAMED_SKU[band];
+  return null;
+}
+
+/** Plotted originals are retired from customer checkout. */
+export function isPurchasableProduct(productType: ProductType): boolean {
+  return productType === 'GICLEE' || productType === 'GICLEE_FRAMED';
 }
 
 export function priceQuote(
@@ -79,7 +126,7 @@ export function priceQuote(
   const length = fishLengthIn && fishLengthIn > 0 ? fishLengthIn : 18;
   const band = bandForLength(length);
   const amountCents = bandPriceCents(productType, band);
-  const shippingCents = shippingDomesticCents();
+  const shippingCents = shippingDomesticCents(productType);
   const sku = `${SKU_PREFIX[productType]}-${band}`;
   const skuLabel = `${BAND_LABEL[band]} (${bandRangeLabel(band)})`;
   return {
@@ -92,6 +139,7 @@ export function priceQuote(
     shippingCents,
     totalCents: amountCents + shippingCents,
     label: productLabel(productType),
+    fulfillmentSku: fulfillmentSkuFor(productType, band),
   };
 }
 
@@ -106,11 +154,11 @@ export function priceCents(
 export function productLabel(productType: ProductType): string {
   switch (productType) {
     case 'PLOTTED_ORIGINAL':
-      return 'Gyotaku plotted original (AxiDraw, signed)';
+      return 'Gyotaku plotted original (retired)';
     case 'GICLEE_FRAMED':
-      return 'Gyotaku giclée print (framed)';
+      return 'Gyotaku archival print (framed, ready to hang)';
     default:
-      return 'Gyotaku giclée print';
+      return 'Gyotaku archival fine art print';
   }
 }
 

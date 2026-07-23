@@ -1,6 +1,6 @@
 # Gyotaku
 
-Turn a salmon photo into gyotaku-style pen-plotter art — then sell a hand-plotted original or a giclée.
+Turn a salmon photo into gyotaku-style ink art — then sell an archival print or ready-to-hang framed print.
 
 **Live**
 
@@ -11,7 +11,7 @@ Turn a salmon photo into gyotaku-style pen-plotter art — then sell a hand-plot
 
 If you see Railway’s JSON **`Application not found`**, the domain is not linked to a running service — see [Deployment → Application not found](docs/DEPLOYMENT.md#application-not-found-railway-json-404).
 
-Guests upload a catch, preview a watermarked print, and check out through Stripe. Captains can share a QR code so charters earn a commission. Operators fulfill plots, prints, and payouts from `/operator`.
+Guests upload a catch, preview a watermarked print, and check out through Stripe. Captains can share a QR code so charters earn a commission. Operators fulfill prints (via Prodigi-oriented POD) and payouts from `/operator`.
 
 ---
 
@@ -31,6 +31,7 @@ Deeper guides live in [`docs/`](docs/):
 | [Operator](docs/OPERATOR.md) | Fulfillment, waitlist, metrics, labels |
 | [Captain affiliates](docs/AFFILIATES.md) | QR referral program + commissions |
 | [Pricing](docs/PRICING.md) | Length-band SKUs, shipping, framed upsell |
+| [Fulfillment](docs/FULFILLMENT.md) | Prodigi vs Gelato / Printful, SKU map |
 
 ---
 
@@ -58,11 +59,8 @@ cd web && npm i && npm run dev
 2. **Size** — enter nose-to-tail length for a life-size print, or fit to paper.
 3. **Generate** (~20–90s) — matte → pen strokes → SVG + watermarked preview.
 4. **Tweak** density, ink, species/side tags; compare strategies; share with `/?p=<renditionId>`.
-5. **Order**
-   - Plotted original (editioned, AxiDraw) — or join the **waitlist** if the plot queue is closed
-   - Giclée, with optional **framed** upsell
-   - Optional gift note; domestic shipping (US/CA) as a flat Stripe line item
-6. Pay via Stripe → clean preview + SVG unlock after payment → ship.
+5. **Order** — fine art print (best deal) or **framed** ready-to-hang; optional gift note; shipping by product
+6. Pay via Stripe → clean preview unlock → print via POD → ship.
 
 Prices use **length-band SKUs** (S / M / L / XL). See [Pricing](docs/PRICING.md).
 
@@ -79,9 +77,8 @@ See [Captain affiliates](docs/AFFILIATES.md).
 
 Open **`/operator`** with `OPERATOR_TOKEN`:
 
-- **Fulfillment** — plot / print / pack / buy shipping label
+- **Fulfillment** — print / pack / buy shipping label (or submit to Prodigi)
 - **Captains** — QR links, owed commissions
-- **Waitlist** — emails when plotted originals are closed
 - **Failed jobs** — dead-letter retry
 - **Metrics** — p50/p95 generate time, reject rates
 

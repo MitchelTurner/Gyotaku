@@ -1,15 +1,17 @@
 # Pricing
 
-Checkout uses **length-band SKUs** (not a continuous per-inch formula), plus a flat domestic shipping line item.
+Checkout uses **length-band SKUs** plus a product-aware domestic shipping line item.
+
+Hand-plotted originals are **not sold**. Live products: archival print and framed print (Prodigi-oriented). See [FULFILLMENT.md](FULFILLMENT.md).
 
 ## Length bands
 
-| Band | Fish length (nose-to-tail) | SKU suffix |
-|---|---|---|
-| **S** | under 14" | `-S` |
-| **M** | 14" – under 20" | `-M` |
-| **L** | 20" – under 28" | `-L` |
-| **XL** | 28"+ | `-XL` |
+| Band | Fish length (nose-to-tail) | SKU suffix | Typical print size |
+|---|---|---|---|
+| **S** | under 14" | `-S` | 12×16" |
+| **M** | 14" – under 20" | `-M` | 16×20" |
+| **L** | 20" – under 28" | `-L` | 18×24" |
+| **XL** | 28"+ | `-XL` | 24×36" |
 
 Cutoffs: `PRICE_BAND_S_MAX_IN`, `PRICE_BAND_M_MAX_IN`, `PRICE_BAND_L_MAX_IN`.
 
@@ -17,27 +19,32 @@ Missing length defaults to **18"** → band **M**.
 
 ## Product SKUs
 
-| Product | SKU prefix | Default M price |
-|---|---|---|
-| Plotted original | `PLOT` | $189 |
-| Giclée | `GIC` | $79 |
-| Framed giclée | `GICF` | $159 |
+| Product | SKU prefix | Default M price | Ship (US/CA) |
+|---|---|---|---|
+| Archival print | `GIC` | $69 | $9 |
+| Framed print | `GICF` | $139 | $18 |
+| ~~Plotted original~~ | `PLOT` | retired | — |
 
-Override any cell with env vars, e.g. `PRICE_PLOT_M_CENTS=18900`, `PRICE_GICF_XL_CENTS=24900`.
+Full defaults:
 
-Quote response includes `sku`, `skuLabel`, `band`, `amountCents` (product), `shippingCents`, and `totalCents`.
+| | S | M | L | XL |
+|---|---|---|---|---|
+| Print | $49 | $69 | $89 | $119 |
+| Framed | $99 | $139 | $179 | $229 |
+
+Override with `PRICE_GIC_{S,M,L,XL}_CENTS`, `PRICE_GICF_*_CENTS`.
+
+Quote response includes `sku`, `skuLabel`, `band`, `amountCents` (product), `shippingCents`, `totalCents`, and `fulfillmentSku` (Prodigi hint).
 
 ## Shipping
 
-- Flat **domestic** rate for US/CA: `SHIPPING_DOMESTIC_CENTS` (default **$14**)
-- Added as a second Stripe Checkout line item: “Domestic shipping (US/CA)”
-- Stored on the order as `shippingCents`; `amountCents` is the **total** charged
+- **Print (rolled):** `SHIPPING_PRINT_CENTS` (default **$9**)
+- **Framed:** `SHIPPING_FRAMED_CENTS` (default **$18**)
+- Legacy fallback: `SHIPPING_DOMESTIC_CENTS`
+- Second Stripe Checkout line item: “Domestic shipping (US/CA)”
+- Order stores `shippingCents`; charged total is product + shipping
 
 ## Upsells & extras
 
-- **Framed giclée** — checkbox on the order screen switches `GICLEE` → `GICLEE_FRAMED`
-- **Gift note** — optional text on the order (stored on Order + Stripe metadata); shown in the operator queue
-
-## Plotted availability
-
-If the plot queue ETA exceeds `PLOTTED_QUEUE_MAX_DAYS`, or the edition is sold out, plotted originals are unavailable. Guests can join the **waitlist** instead of checking out that tier. Giclée / framed remain purchasable.
+- **Framed** — second product card on the order screen (`GICLEE` ↔ `GICLEE_FRAMED`)
+- **Gift note** — optional text on the order (stored on Order + Stripe metadata)

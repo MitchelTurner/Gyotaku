@@ -26,7 +26,7 @@ Vite proxies `/api` → `http://localhost:3000`.
 2. Enter fish length (life-size) or fit to paper
 3. Create rendition, poll honest processing stages
 4. Preview — density / ink / species / side; compare strategies; share `/?p=`
-5. Order — plotted original, giclée, or framed giclée; gift note; waitlist if plots closed
+5. Order — fine art print or framed; gift note; Stripe checkout
 6. Stripe return: `/?order=success|cancel&orderId=…` (paid unlock for clean preview + SVG)
 
 Captain QR entry: `/?ref=<code>` (sticky in localStorage for checkout attribution).

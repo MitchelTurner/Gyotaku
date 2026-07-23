@@ -84,19 +84,21 @@ export function OrderStatus({ orderId, kind, onDone, onReorder }: Props) {
     ? formatPaperSize(order.paperWidthMm, order.paperHeightMm)
     : null
   const otherProduct: ProductType | null = order
-    ? order.productType === 'PLOTTED_ORIGINAL'
+    ? order.productType === 'GICLEE_FRAMED'
       ? 'GICLEE'
-      : 'PLOTTED_ORIGINAL'
+      : order.productType === 'GICLEE'
+        ? 'GICLEE_FRAMED'
+        : 'GICLEE'
     : null
 
   function productTypeLabel(t: ProductType): string {
     switch (t) {
       case 'PLOTTED_ORIGINAL':
-        return 'Plotted original'
+        return 'Plotted original (retired)'
       case 'GICLEE_FRAMED':
-        return 'Framed giclée'
+        return 'Framed print'
       default:
-        return 'Giclée'
+        return 'Fine art print'
     }
   }
 
@@ -109,8 +111,8 @@ export function OrderStatus({ orderId, kind, onDone, onReorder }: Props) {
       <p className="mt-3 text-sm text-ink/55">
         {kind === 'success'
           ? order?.paid
-            ? 'Payment confirmed. Download your clean preview below — we’ll plot or print, then ship.'
-            : 'Payment is processing. You’ll get a confirmation email from Stripe when it clears. We’ll plot or print, then ship.'
+            ? 'Payment confirmed. Download your clean preview below — we’ll print and ship.'
+            : 'Payment is processing. You’ll get a confirmation email from Stripe when it clears. We’ll print and ship.'
           : 'No charge was made. You can return to your preview and try again whenever you’re ready.'}
       </p>
 
@@ -184,7 +186,7 @@ export function OrderStatus({ orderId, kind, onDone, onReorder }: Props) {
           className="mt-6 w-full rounded-sm border border-ink/15 px-5 py-3 text-sm text-ink/70 transition hover:border-ink/30 hover:text-ink"
         >
           Order again as{' '}
-          {otherProduct === 'PLOTTED_ORIGINAL' ? 'plotted original' : 'giclée'}
+          {otherProduct === 'GICLEE_FRAMED' ? 'framed print' : 'fine art print'}
         </button>
       )}
 

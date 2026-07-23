@@ -99,9 +99,26 @@ export class OrdersService implements OnModuleDestroy {
 
   async quote(productType: ProductType, fishLengthIn?: number | null) {
     const q = priceQuote(productType, fishLengthIn);
-    const availability =
-      productType === 'PLOTTED_ORIGINAL' ? await this.plottedAvailability() : null;
-    const available = availability ? availability.open : true;
+    // Plotted originals retired — print / framed only at checkout
+    if (productType === 'PLOTTED_ORIGINAL') {
+      return {
+        productType,
+        fishLengthIn: q.fishLengthIn,
+        band: q.band,
+        sku: q.sku,
+        skuLabel: q.skuLabel,
+        amountCents: q.amountCents,
+        shippingCents: q.shippingCents,
+        totalCents: q.totalCents,
+        currency: 'usd',
+        label: q.label,
+        fulfillmentSku: q.fulfillmentSku,
+        available: false,
+        unavailableReason: 'Plotted originals are no longer offered',
+        queueEtaDays: null,
+        waitlistOpen: false,
+      };
+    }
     return {
       productType,
       fishLengthIn: q.fishLengthIn,
@@ -113,11 +130,11 @@ export class OrdersService implements OnModuleDestroy {
       totalCents: q.totalCents,
       currency: 'usd',
       label: q.label,
-      available,
-      unavailableReason: availability?.reason ?? null,
-      queueEtaDays: availability?.queueEtaDays ?? null,
-      /** Join waitlist instead of hard-close when plotted queue is full / sold out. */
-      waitlistOpen: productType === 'PLOTTED_ORIGINAL' && !available,
+      fulfillmentSku: q.fulfillmentSku,
+      available: true,
+      unavailableReason: null,
+      queueEtaDays: null,
+      waitlistOpen: false,
     };
   }
 
@@ -216,13 +233,9 @@ export class OrdersService implements OnModuleDestroy {
     }
 
     if (dto.productType === 'PLOTTED_ORIGINAL') {
-      const avail = await this.plottedAvailability();
-      if (!avail.open) {
-        throw new BadRequestException(
-          avail.reason ||
-            'Plotted originals are temporarily unavailable — join the waitlist instead',
-        );
-      }
+      throw new BadRequestException(
+        'Plotted originals are no longer offered — choose a fine art print or framed print',
+      );
     }
 
     const style = (rendition.styleParams || {}) as Record<string, unknown>;
@@ -268,7 +281,8 @@ export class OrdersService implements OnModuleDestroy {
               quote.skuLabel,
               fishLengthIn
                 ? `Life-size gyotaku · ${fishLengthIn}" nose-to-tail`
-                : 'Gyotaku plotter print',
+                : 'Gyotaku archival print',
+              quote.fulfillmentSku ? `Fulfill ${quote.fulfillmentSku}` : null,
             ]
               .filter(Boolean)
               .join(' · '),
@@ -278,14 +292,21 @@ export class OrdersService implements OnModuleDestroy {
     ];
 
     if (quote.shippingCents > 0) {
+      const shipName =
+        dto.productType === 'GICLEE_FRAMED'
+          ? 'Framed shipping (US/CA)'
+          : 'Print shipping (US/CA)';
       lineItems.push({
         quantity: 1,
         price_data: {
           currency: 'usd',
           unit_amount: quote.shippingCents,
           product_data: {
-            name: 'Domestic shipping (US/CA)',
-            description: 'Flat-rate shipping within the United States and Canada',
+            name: shipName,
+            description:
+              dto.productType === 'GICLEE_FRAMED'
+                ? 'Ready-to-hang framed print shipping within the United States and Canada'
+                : 'Rolled fine-art print shipping within the United States and Canada',
           },
         },
       });
