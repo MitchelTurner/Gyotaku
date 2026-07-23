@@ -112,14 +112,18 @@ function styleParamsFromControls(c: StyleControls): Record<string, unknown> {
     })
   }
 
-  // Photo anatomy — silhouette / eye / edges over swirl fill (no topo contours)
+  // Photo anatomy — silhouette / eye / gill / fin rays over body-aligned fill
   Object.assign(params, {
     detail_silhouette_enabled: true,
-    detail_silhouette_double: true,
+    detail_silhouette_double: false,
     detail_eye_enabled: true,
+    detail_operculum_enabled: true,
+    detail_fin_rays_enabled: true,
     detail_edge_enabled: true,
     detail_ridge_enabled: true,
     detail_contour_enabled: false,
+    body_axis_blend: 0.55,
+    head_stroke_scale: 0.45,
   })
 
   if (c.ink === 'soft') {

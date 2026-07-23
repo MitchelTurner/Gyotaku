@@ -171,6 +171,19 @@ def build_tonal_maps(
 
     bands = posterize(lum, params.posterize_levels, m)
     orientation = structure_tensor_orientation(lum, params.orientation_sigma)
+    # Bias strokes along the fish centerline so fill follows the body, not swirls
+    blend = float(getattr(params, "body_axis_blend", 0.0) or 0.0)
+    if blend > 0:
+        from gyotaku.marks.anatomy import (
+            blend_orientation_fields,
+            body_axis_orientation,
+            build_fish_frame,
+        )
+
+        frame = build_fish_frame(m.astype(np.float32), lum)
+        if frame is not None:
+            body = body_axis_orientation(m.astype(np.float32), frame)
+            orientation = blend_orientation_fields(orientation, body, blend, m)
     edges = edge_map(lum, m, params.edge_low, params.edge_high)
 
     return TonalMaps(

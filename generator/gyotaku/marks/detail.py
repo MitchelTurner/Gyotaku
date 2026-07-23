@@ -14,6 +14,11 @@ import math
 import cv2
 import numpy as np
 
+from gyotaku.marks.anatomy import (
+    build_fish_frame,
+    fin_ray_paths,
+    operculum_jaw_paths,
+)
 from gyotaku.marks.base import Path
 from gyotaku.params import StyleParams
 
@@ -206,73 +211,19 @@ def eye_mark_paths(
     """Detect a dark compact eye blob and stroke a small ring + pupil tick."""
     if not params.detail_eye_enabled:
         return []
+    from gyotaku.marks.anatomy import detect_eye_center
 
+    center = detect_eye_center(luminance, matte)
+    if center is None:
+        return []
+    cx, cy = center
     subject = matte > 0.4
-    if np.count_nonzero(subject) < 200:
-        return []
-
     ys, xs = np.where(subject)
-    x0, x1 = int(xs.min()), int(xs.max())
-    y0, y1 = int(ys.min()), int(ys.max())
-    bw = max(1, x1 - x0)
-    bh = max(1, y1 - y0)
-
-    # Fish may face either way — search both end thirds and keep the best eye
-    zones: list[np.ndarray] = []
-    if bw >= bh:
-        left = subject.copy()
-        left[:, x0 + int(bw * 0.38) :] = False
-        right = subject.copy()
-        right[:, : x0 + int(bw * 0.62)] = False
-        zones.extend([left, right])
-    else:
-        top = subject.copy()
-        top[y0 + int(bh * 0.38) :, :] = False
-        bot = subject.copy()
-        bot[: y0 + int(bh * 0.62), :] = False
-        zones.extend([top, bot])
-
-    dark_full = (1.0 - np.clip(luminance, 0.0, 1.0)) * subject.astype(np.float32)
-    best = None
-    best_score = -1.0
-    min_r = max(2.5, 0.014 * max(bw, bh))
-    max_r = max(min_r + 1.0, 0.06 * max(bw, bh))
-
-    for head in zones:
-        if np.count_nonzero(head) < 50:
-            continue
-        dark = dark_full * head.astype(np.float32)
-        u8 = np.clip(dark * 255.0, 0, 255).astype(np.uint8)
-        blur = cv2.GaussianBlur(u8, (0, 0), 1.2)
-        thr_val = max(40, int(np.percentile(blur[head], 93)))
-        _, thr = cv2.threshold(blur, thr_val, 255, cv2.THRESH_BINARY)
-        thr = cv2.bitwise_and(thr, head.astype(np.uint8) * 255)
-        thr = cv2.morphologyEx(thr, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
-
-        n, labels, stats, centroids = cv2.connectedComponentsWithStats(thr, connectivity=8)
-        if n <= 1:
-            continue
-        for i in range(1, n):
-            area = float(stats[i, cv2.CC_STAT_AREA])
-            ww = float(stats[i, cv2.CC_STAT_WIDTH])
-            hh = float(stats[i, cv2.CC_STAT_HEIGHT])
-            if area < 8 or area > math.pi * (max_r**2) * 2.0:
-                continue
-            r = 0.5 * math.sqrt(ww * ww + hh * hh)
-            if r < min_r or r > max_r:
-                continue
-            roundness = min(ww, hh) / max(ww, hh)
-            mean_dark = float(dark[labels == i].mean()) if area > 0 else 0.0
-            score = mean_dark * (0.55 + 0.45 * roundness) * math.log1p(area)
-            if score > best_score:
-                best_score = score
-                cx, cy = float(centroids[i, 0]), float(centroids[i, 1])
-                best = (cx, cy, max(min_r, min(max_r, r * 0.9)))
-
-    if best is None:
+    if len(xs) == 0:
         return []
-
-    cx, cy, r = best
+    bw = max(1, int(xs.max() - xs.min()))
+    bh = max(1, int(ys.max() - ys.min()))
+    r = max(2.5, 0.02 * max(bw, bh))
     nseg = max(18, int(2 * math.pi * r / max(1.0, params.detail_eye_stride)))
     angles = np.linspace(0, 2 * math.pi, nseg, endpoint=True)
     ring = np.stack([cx + r * np.cos(angles), cy + r * np.sin(angles)], axis=1).astype(
@@ -348,10 +299,13 @@ def build_detail_paths(
     matte: np.ndarray,
     params: StyleParams,
 ) -> list[Path]:
-    """Silhouette + eye + photo edges + dark ridges (+ optional form contours)."""
+    """Silhouette + eye + operculum/jaw + fin rays + edges + ridges."""
+    frame = build_fish_frame(matte, luminance)
     paths: list[Path] = []
     paths.extend(matte_silhouette_polylines(matte, params))
     paths.extend(eye_mark_paths(luminance, matte, params))
+    paths.extend(operculum_jaw_paths(luminance, matte, params, frame=frame))
+    paths.extend(fin_ray_paths(matte, params, frame=frame, luminance=luminance))
     paths.extend(
         feature_edge_polylines(edges, matte, params, luminance=luminance)
     )

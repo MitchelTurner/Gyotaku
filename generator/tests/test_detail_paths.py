@@ -90,6 +90,8 @@ def test_detail_can_be_disabled():
     params = StyleParams(
         detail_silhouette_enabled=False,
         detail_eye_enabled=False,
+        detail_operculum_enabled=False,
+        detail_fin_rays_enabled=False,
         detail_edge_enabled=False,
         detail_ridge_enabled=False,
         detail_contour_enabled=False,

@@ -103,6 +103,8 @@ class FlowfieldStrategy(MarkStrategy):
         detail_on = (
             params.detail_silhouette_enabled
             or params.detail_eye_enabled
+            or params.detail_operculum_enabled
+            or params.detail_fin_rays_enabled
             or params.detail_edge_enabled
             or params.detail_ridge_enabled
             or params.detail_contour_enabled
@@ -119,6 +121,15 @@ class FlowfieldStrategy(MarkStrategy):
         grid = SpatialHash(cell)
         paths: list[Path] = []
 
+        # Headness map → shorter fill strokes near the head
+        headness = None
+        if float(params.head_stroke_scale) < 0.999:
+            from gyotaku.marks.anatomy import build_fish_frame, headness_map
+
+            frame = build_fish_frame(matte, luminance)
+            if frame is not None:
+                headness = headness_map(matte, frame)
+
         # Reserve space around photo feature lines so fill doesn't overwrite them
         for dp in detail_paths:
             grid.insert_polyline(dp.points, stride=max(1, int(params.step_px)))
@@ -129,7 +140,17 @@ class FlowfieldStrategy(MarkStrategy):
             sep = _separation_for_luminance(lum, params) * sep_boost
             if grid.too_close(sx, sy, sep * 0.9):
                 continue
-            pts = self._trace_stroke(sx, sy, luminance, orientation, matte, params, grid)
+            max_len = params.max_stroke_length_px
+            if headness is not None:
+                hx = int(np.clip(round(sx), 0, w - 1))
+                hy = int(np.clip(round(sy), 0, h - 1))
+                hn = float(headness[hy, hx])
+                # Head → shorter; tail keeps full length
+                scale = 1.0 - hn * (1.0 - float(params.head_stroke_scale))
+                max_len = max(8.0, max_len * scale)
+            pts = self._trace_stroke(
+                sx, sy, luminance, orientation, matte, params, grid, max_len=max_len
+            )
             if pts is None or len(pts) < params.min_stroke_points:
                 continue
             arr = np.asarray(pts, dtype=np.float32)
@@ -216,10 +237,11 @@ class FlowfieldStrategy(MarkStrategy):
         matte: np.ndarray,
         params: StyleParams,
         grid: SpatialHash,
+        max_len: float | None = None,
     ) -> list[tuple[float, float]] | None:
         h, w = luminance.shape
         step = params.step_px
-        max_len = params.max_stroke_length_px
+        max_len = float(params.max_stroke_length_px if max_len is None else max_len)
         max_angle = params.max_cum_angle_rad
 
         def integrate(direction: float) -> list[tuple[float, float]]:

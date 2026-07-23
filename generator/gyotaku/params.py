@@ -112,9 +112,18 @@ class StyleParams:
     # Photo-faithful detail — continuous lines from the image (not orientation swirls)
     detail_silhouette_enabled: bool = True
     detail_silhouette_stride: int = 2
-    detail_silhouette_double: bool = True  # inset rim for stronger fish outline
+    detail_silhouette_double: bool = False  # single confident outline reads cleaner
     detail_eye_enabled: bool = True
     detail_eye_stride: float = 1.5
+    # Forced gill plate + jaw in the head region
+    detail_operculum_enabled: bool = True
+    detail_operculum_offset: float = 0.10  # fraction of body length behind the eye
+    detail_operculum_segments: int = 28
+    # Fan strokes inside dorsal / caudal / anal protrusions
+    detail_fin_rays_enabled: bool = True
+    detail_fin_ray_count: int = 7
+    detail_fin_ray_length: float = 0.92  # fraction of base→tip distance
+    detail_fin_max_fins: int = 6
     detail_edge_enabled: bool = True
     detail_edge_stride: int = 2
     detail_edge_min_points: int = 10
@@ -132,6 +141,10 @@ class StyleParams:
     detail_contour_max_paths: int = 40
     # Scale down pure flowfield fill so feature lines stay readable
     detail_flowfield_seed_scale: float = 0.22
+    # Blend structure-tensor orientation toward the fish long-axis / centerline
+    body_axis_blend: float = 0.55
+    # Shorten fill strokes near the head (1 = no change, 0.3 = much shorter)
+    head_stroke_scale: float = 0.45
 
     # Output
     douglas_peucker_epsilon_mm: float = 0.04
@@ -254,10 +267,21 @@ def resolve_params(
     data["detail_flowfield_seed_scale"] = max(
         0.12, min(1.0, float(data.get("detail_flowfield_seed_scale", 0.22)))
     )
+    data["body_axis_blend"] = max(
+        0.0, min(1.0, float(data.get("body_axis_blend", 0.55)))
+    )
+    data["head_stroke_scale"] = max(
+        0.2, min(1.0, float(data.get("head_stroke_scale", 0.45)))
+    )
+    data["detail_operculum_offset"] = max(
+        0.04, min(0.25, float(data.get("detail_operculum_offset", 0.10)))
+    )
     for flag in (
         "detail_silhouette_enabled",
         "detail_silhouette_double",
         "detail_eye_enabled",
+        "detail_operculum_enabled",
+        "detail_fin_rays_enabled",
         "detail_edge_enabled",
         "detail_ridge_enabled",
         "detail_contour_enabled",
