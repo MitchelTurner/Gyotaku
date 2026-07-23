@@ -89,6 +89,17 @@ export function OrderStatus({ orderId, kind, onDone, onReorder }: Props) {
       : 'PLOTTED_ORIGINAL'
     : null
 
+  function productTypeLabel(t: ProductType): string {
+    switch (t) {
+      case 'PLOTTED_ORIGINAL':
+        return 'Plotted original'
+      case 'GICLEE_FRAMED':
+        return 'Framed giclée'
+      default:
+        return 'Giclée'
+    }
+  }
+
   return (
     <section className="mx-auto flex min-h-dvh w-full max-w-lg flex-col justify-center px-6 py-12">
       <p className="font-display text-2xl text-ink">Gyotaku</p>
@@ -112,7 +123,7 @@ export function OrderStatus({ orderId, kind, onDone, onReorder }: Props) {
           </p>
           <p>
             <span className="text-ink/40">Type</span>{' '}
-            {order.productType === 'PLOTTED_ORIGINAL' ? 'Plotted original' : 'Giclée'}
+            {productTypeLabel(order.productType)}
             {editionLabel ? ` · edition ${editionLabel}` : ''}
           </p>
           <p>

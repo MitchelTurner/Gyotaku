@@ -17,6 +17,7 @@ import { AffiliatesService } from './affiliates.service';
 import {
   CreateAffiliateDto,
   CreateCheckoutDto,
+  JoinWaitlistDto,
   MarkAffiliatePaidDto,
   UpdateFulfillmentDto,
 } from './dto';
@@ -53,6 +54,11 @@ export class OrdersController {
   @Get('affiliates/:code')
   resolveAffiliate(@Param('code') code: string) {
     return this.affiliates.resolvePublic(code);
+  }
+
+  @Post('orders/waitlist')
+  joinWaitlist(@Body() body: JoinWaitlistDto) {
+    return this.orders.joinWaitlist(body);
   }
 
   @Get('orders/:id')
@@ -148,6 +154,12 @@ export class OrdersController {
   ) {
     assertOperator(token);
     return this.affiliates.markPaid(id, body);
+  }
+
+  @Get('operator/waitlist')
+  listWaitlist(@Headers('x-operator-token') token: string | undefined) {
+    assertOperator(token);
+    return this.orders.listWaitlist();
   }
 }
 

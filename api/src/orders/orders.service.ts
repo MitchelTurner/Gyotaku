@@ -13,9 +13,13 @@ import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { AffiliatesService } from './affiliates.service';
 import { commissionCents } from './commission';
-import { CreateCheckoutDto, UpdateFulfillmentDto } from './dto';
+import {
+  CreateCheckoutDto,
+  JoinWaitlistDto,
+  UpdateFulfillmentDto,
+} from './dto';
 import { PYTHON_JOB_QUEUE, type PrintJobPayload } from './print-jobs';
-import { priceCents, productLabel } from './pricing';
+import { isGicleeProduct, priceQuote, productLabel } from './pricing';
 import { isPlottedQueueOpen } from './queue-eta';
 import {
   purchaseShippingLabel,
@@ -94,18 +98,97 @@ export class OrdersService implements OnModuleDestroy {
   }
 
   async quote(productType: ProductType, fishLengthIn?: number | null) {
-    const amountCents = priceCents(productType, fishLengthIn);
+    const q = priceQuote(productType, fishLengthIn);
     const availability =
       productType === 'PLOTTED_ORIGINAL' ? await this.plottedAvailability() : null;
+    const available = availability ? availability.open : true;
     return {
       productType,
-      fishLengthIn: fishLengthIn ?? null,
-      amountCents,
+      fishLengthIn: q.fishLengthIn,
+      band: q.band,
+      sku: q.sku,
+      skuLabel: q.skuLabel,
+      amountCents: q.amountCents,
+      shippingCents: q.shippingCents,
+      totalCents: q.totalCents,
       currency: 'usd',
-      label: productLabel(productType),
-      available: availability ? availability.open : true,
+      label: q.label,
+      available,
       unavailableReason: availability?.reason ?? null,
       queueEtaDays: availability?.queueEtaDays ?? null,
+      /** Join waitlist instead of hard-close when plotted queue is full / sold out. */
+      waitlistOpen: productType === 'PLOTTED_ORIGINAL' && !available,
+    };
+  }
+
+  async joinWaitlist(dto: JoinWaitlistDto) {
+    const productType = dto.productType ?? 'PLOTTED_ORIGINAL';
+    if (productType !== 'PLOTTED_ORIGINAL') {
+      throw new BadRequestException('Waitlist is only for plotted originals');
+    }
+
+    const avail = await this.plottedAvailability();
+    if (avail.open) {
+      throw new BadRequestException(
+        'Plotted originals are available — checkout instead of joining the waitlist',
+      );
+    }
+
+    const q = priceQuote(productType, dto.fishLengthIn);
+    const email = dto.email.trim().toLowerCase();
+
+    const entry = await this.prisma.waitlistEntry.upsert({
+      where: {
+        email_productType: { email, productType },
+      },
+      create: {
+        email,
+        sessionId: dto.sessionId,
+        renditionId: dto.renditionId,
+        fishLengthIn: dto.fishLengthIn ?? q.fishLengthIn,
+        sku: q.sku,
+        productType,
+        note: dto.note?.trim() || undefined,
+      },
+      update: {
+        sessionId: dto.sessionId ?? undefined,
+        renditionId: dto.renditionId ?? undefined,
+        fishLengthIn: dto.fishLengthIn ?? undefined,
+        sku: q.sku,
+        note: dto.note?.trim() || undefined,
+        notifiedAt: null,
+      },
+    });
+
+    return {
+      id: entry.id,
+      email: entry.email,
+      productType: entry.productType,
+      sku: entry.sku,
+      fishLengthIn: entry.fishLengthIn,
+      reason: avail.reason,
+      message: "You're on the waitlist. We'll email when plotted originals reopen.",
+    };
+  }
+
+  async listWaitlist() {
+    const entries = await this.prisma.waitlistEntry.findMany({
+      orderBy: { createdAt: 'asc' },
+      take: 200,
+    });
+    return {
+      count: entries.length,
+      entries: entries.map((e) => ({
+        id: e.id,
+        email: e.email,
+        productType: e.productType,
+        sku: e.sku,
+        fishLengthIn: e.fishLengthIn,
+        renditionId: e.renditionId,
+        note: e.note,
+        notifiedAt: e.notifiedAt,
+        createdAt: e.createdAt,
+      })),
     };
   }
 
@@ -136,7 +219,8 @@ export class OrdersService implements OnModuleDestroy {
       const avail = await this.plottedAvailability();
       if (!avail.open) {
         throw new BadRequestException(
-          avail.reason || 'Plotted originals are temporarily unavailable',
+          avail.reason ||
+            'Plotted originals are temporarily unavailable — join the waitlist instead',
         );
       }
     }
@@ -145,11 +229,12 @@ export class OrdersService implements OnModuleDestroy {
     const fishLengthIn =
       dto.fishLengthIn ??
       (typeof style.fish_length_in === 'number' ? style.fish_length_in : null);
-    const amountCents = priceCents(dto.productType, fishLengthIn);
+    const quote = priceQuote(dto.productType, fishLengthIn);
+    const giftNote = dto.giftNote?.trim() || undefined;
 
     const affiliate = await this.affiliates.findActiveByCode(dto.affiliateCode);
     const earnedCommission = affiliate
-      ? commissionCents(amountCents, affiliate.commissionBps)
+      ? commissionCents(quote.amountCents, affiliate.commissionBps)
       : 0;
 
     const order = await this.prisma.order.create({
@@ -158,13 +243,53 @@ export class OrdersService implements OnModuleDestroy {
         renditionId: rendition.id,
         productType: dto.productType,
         status: 'AWAITING_PAYMENT',
-        amountCents,
+        amountCents: quote.totalCents,
+        productAmountCents: quote.amountCents,
+        shippingCents: quote.shippingCents,
+        sku: quote.sku,
+        skuLabel: quote.skuLabel,
         fishLengthIn: fishLengthIn ?? undefined,
         email: dto.email,
+        giftNote,
         affiliateId: affiliate?.id,
         commissionCents: earnedCommission > 0 ? earnedCommission : undefined,
       },
     });
+
+    const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [
+      {
+        quantity: 1,
+        price_data: {
+          currency: 'usd',
+          unit_amount: quote.amountCents,
+          product_data: {
+            name: `${productLabel(dto.productType)} · ${quote.sku}`,
+            description: [
+              quote.skuLabel,
+              fishLengthIn
+                ? `Life-size gyotaku · ${fishLengthIn}" nose-to-tail`
+                : 'Gyotaku plotter print',
+            ]
+              .filter(Boolean)
+              .join(' · '),
+          },
+        },
+      },
+    ];
+
+    if (quote.shippingCents > 0) {
+      lineItems.push({
+        quantity: 1,
+        price_data: {
+          currency: 'usd',
+          unit_amount: quote.shippingCents,
+          product_data: {
+            name: 'Domestic shipping (US/CA)',
+            description: 'Flat-rate shipping within the United States and Canada',
+          },
+        },
+      });
+    }
 
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
@@ -180,6 +305,8 @@ export class OrdersService implements OnModuleDestroy {
         renditionId: rendition.id,
         productType: dto.productType,
         sessionId: dto.sessionId,
+        sku: quote.sku,
+        ...(giftNote ? { giftNote: giftNote.slice(0, 450) } : {}),
         ...(affiliate
           ? {
               affiliateId: affiliate.id,
@@ -188,21 +315,7 @@ export class OrdersService implements OnModuleDestroy {
             }
           : {}),
       },
-      line_items: [
-        {
-          quantity: 1,
-          price_data: {
-            currency: 'usd',
-            unit_amount: amountCents,
-            product_data: {
-              name: productLabel(dto.productType),
-              description: fishLengthIn
-                ? `Life-size gyotaku · ${fishLengthIn}" nose-to-tail`
-                : 'Gyotaku plotter print',
-            },
-          },
-        },
-      ],
+      line_items: lineItems,
     });
 
     await this.prisma.order.update({
@@ -217,7 +330,10 @@ export class OrdersService implements OnModuleDestroy {
     return {
       orderId: order.id,
       checkoutUrl: session.url,
-      amountCents,
+      amountCents: quote.totalCents,
+      productAmountCents: quote.amountCents,
+      shippingCents: quote.shippingCents,
+      sku: quote.sku,
       currency: 'usd',
       productType: dto.productType,
       affiliateCode: affiliate?.code ?? null,
@@ -358,7 +474,7 @@ export class OrdersService implements OnModuleDestroy {
       });
     });
 
-    if (paid?.productType === 'GICLEE') {
+    if (paid && isGicleeProduct(paid.productType)) {
       await this.enqueuePrintJob(paid.rendition);
     }
   }
@@ -419,7 +535,10 @@ export class OrdersService implements OnModuleDestroy {
         trackingNumber: dto.trackingNumber,
         fulfillmentNote: dto.fulfillmentNote,
       },
-      include: { rendition: true },
+      include: {
+        rendition: true,
+        affiliate: { select: { id: true, code: true, name: true } },
+      },
     });
     return this.toOperator(updated);
   }
@@ -431,7 +550,10 @@ export class OrdersService implements OnModuleDestroy {
   async createLabel(orderId: string) {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
-      include: { rendition: true },
+      include: {
+        rendition: true,
+        affiliate: { select: { id: true, code: true, name: true } },
+      },
     });
     if (!order) throw new NotFoundException('Order not found');
     if (['CANCELLED', 'REFUNDED'].includes(order.status)) {
@@ -465,7 +587,10 @@ export class OrdersService implements OnModuleDestroy {
             order.fulfillmentNote ||
             `Label via ${label.provider} (${label.carrier} ${label.service})`,
         },
-        include: { rendition: true },
+        include: {
+          rendition: true,
+          affiliate: { select: { id: true, code: true, name: true } },
+        },
       });
       return this.toOperator(updated);
     } catch (err) {
@@ -485,10 +610,13 @@ export class OrdersService implements OnModuleDestroy {
   async requestPrint(orderId: string) {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
-      include: { rendition: { include: { upload: true } } },
+      include: {
+        rendition: { include: { upload: true } },
+        affiliate: { select: { id: true, code: true, name: true } },
+      },
     });
     if (!order) throw new NotFoundException('Order not found');
-    if (order.productType !== 'GICLEE') {
+    if (!isGicleeProduct(order.productType)) {
       throw new BadRequestException('Print raster is only for giclée orders');
     }
     if (order.rendition.printKey) {
@@ -505,6 +633,11 @@ export class OrdersService implements OnModuleDestroy {
     productType: ProductType;
     status: OrderStatus;
     amountCents: number;
+    productAmountCents?: number | null;
+    shippingCents?: number | null;
+    sku?: string | null;
+    skuLabel?: string | null;
+    giftNote?: string | null;
     currency: string;
     fishLengthIn: number | null;
     editionNumber: number | null;
@@ -540,6 +673,11 @@ export class OrdersService implements OnModuleDestroy {
       productType: order.productType,
       status: order.status,
       amountCents: order.amountCents,
+      productAmountCents: order.productAmountCents ?? null,
+      shippingCents: order.shippingCents ?? 0,
+      sku: order.sku ?? null,
+      skuLabel: order.skuLabel ?? null,
+      giftNote: order.giftNote ?? null,
       currency: order.currency,
       fishLengthIn: order.fishLengthIn,
       editionNumber: order.editionNumber,
@@ -571,6 +709,11 @@ export class OrdersService implements OnModuleDestroy {
     productType: ProductType;
     status: OrderStatus;
     amountCents: number;
+    productAmountCents?: number | null;
+    shippingCents?: number | null;
+    sku?: string | null;
+    skuLabel?: string | null;
+    giftNote?: string | null;
     currency: string;
     fishLengthIn: number | null;
     editionNumber: number | null;
@@ -629,6 +772,11 @@ export class OrdersService implements OnModuleDestroy {
       productType: order.productType,
       status: order.status,
       amountCents: order.amountCents,
+      productAmountCents: order.productAmountCents ?? null,
+      shippingCents: order.shippingCents ?? 0,
+      sku: order.sku ?? null,
+      skuLabel: order.skuLabel ?? null,
+      giftNote: order.giftNote ?? null,
       currency: order.currency,
       fishLengthIn: order.fishLengthIn,
       editionNumber: order.editionNumber,

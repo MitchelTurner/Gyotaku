@@ -42,6 +42,41 @@ export class CreateCheckoutDto {
   @MinLength(3)
   @MaxLength(40)
   affiliateCode?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  giftNote?: string;
+}
+
+export class JoinWaitlistDto {
+  @IsEmail()
+  email!: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(8)
+  sessionId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(8)
+  renditionId?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(4)
+  @Max(60)
+  fishLengthIn?: number;
+
+  @IsOptional()
+  @IsEnum(ProductType)
+  productType?: ProductType;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  note?: string;
 }
 
 export class CreateAffiliateDto {
