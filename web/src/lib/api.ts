@@ -1,4 +1,13 @@
-const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') || '/api'
+/**
+ * Browser API base.
+ * - Dev: `/api` (Vite proxy → localhost:3000)
+ * - Prod default: public API host (works even if the web `/api` proxy is misconfigured)
+ * - Override with build-time `VITE_API_URL` if needed
+ */
+const API_BASE = (
+  (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ||
+  (import.meta.env.PROD ? 'https://gyotaku-api.up.railway.app' : '/api')
+)
 
 function friendlyFetchError(err: unknown, what: string): Error {
   if (err instanceof TypeError) {

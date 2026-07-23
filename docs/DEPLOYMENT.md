@@ -26,12 +26,17 @@ Also provision **Postgres**, **Redis**, and object storage (**Cloudflare R2** or
 | `API_PROXY_TARGET` | `https://gyotaku-api.up.railway.app` |
 | `VITE_API_URL` | **Leave empty** — browser calls same-origin `/api` |
 
-The web service runs `node server.mjs`, which serves `dist/` and proxies `/api/*` → `API_PROXY_TARGET` (strips the `/api` prefix). That avoids CORS for browser uploads/checkout.
+Production builds call the API at `https://gyotaku-api.up.railway.app` directly (see `web/src/lib/api.ts`). The API reflects CORS origins by default.
 
-**Required on the web service:** `API_PROXY_TARGET=https://gyotaku-api.up.railway.app`  
-Leave `VITE_API_URL` empty.
+Optional: web also runs `node server.mjs` with `/api` → `API_PROXY_TARGET` for same-origin calls. Set on **web**:
 
-If `API_PROXY_TARGET` is missing or still points at `https://gyotaku.up.railway.app` (the web host), `/api/*` returns HTML or 405 and **photo upload fails**.
+| Variable | Value |
+|---|---|
+| `API_PROXY_TARGET` | `https://gyotaku-api.up.railway.app` |
+| `RAILPACK_SPA_OUTPUT_DIR` | **delete** if present (forces static SPA and breaks Node start) |
+| `VITE_API_URL` | leave empty (prod default is the API host) |
+
+If uploads fail with “Failed to fetch”, confirm the API is up and CORS isn’t locked to `localhost`.
 
 ---
 

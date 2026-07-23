@@ -1,4 +1,7 @@
-const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') || '/api'
+const API_BASE = (
+  (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ||
+  (import.meta.env.PROD ? 'https://gyotaku-api.up.railway.app' : '/api')
+)
 
 const TOKEN_KEY = 'gyotaku.operatorToken'
 

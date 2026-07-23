@@ -41,10 +41,10 @@ Create a **separate** service (not the worker):
 
 1. Root Directory = `web`
 2. **Do not set** `VITE_API_URL` (use same-origin `/api`)
-3. Runtime: `API_PROXY_TARGET=https://gyotaku-api.up.railway.app`
-4. Public domain: `gyotaku.up.railway.app`
+3. Public domain: `gyotaku.up.railway.app`
+4. Delete `RAILPACK_SPA_OUTPUT_DIR` if set; optional `API_PROXY_TARGET=https://gyotaku-api.up.railway.app`
 5. Deploy → open https://gyotaku.up.railway.app
 
-`npm start` (`server.mjs`) serves the SPA and proxies `/api/*` → `API_PROXY_TARGET`. The worker URL is never the frontend.
+Production builds talk to `https://gyotaku-api.up.railway.app` directly. `npm start` (`server.mjs`) serves the SPA.
 
 Set API `PUBLIC_WEB_URL=https://gyotaku.up.railway.app` for Stripe redirects.
