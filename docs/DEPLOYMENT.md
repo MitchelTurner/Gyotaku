@@ -166,6 +166,16 @@ stripe listen --forward-to localhost:3000/webhooks/stripe
 
 ---
 
+## Prodigi (auto print + ship)
+
+1. API: `PRODIGI_API_KEY`, `PRODIGI_ENV=sandbox` (then `live`), `PUBLIC_API_URL=https://gyotaku-api.up.railway.app`
+2. Optional: merchant callback URL in Prodigi dashboard → `https://gyotaku-api.up.railway.app/webhooks/prodigi`
+3. Worker: `GYOTAKU_API_URL` + `INTERNAL_JOB_TOKEN` (same secret as API)
+4. Run migration `prodigi_fulfillment`
+5. Confirm SKUs in [FULFILLMENT.md](FULFILLMENT.md) against your catalog
+
+---
+
 ## Health
 
 - `GET https://gyotaku-api.up.railway.app/health` — Postgres, Redis, S3, Stripe config + alerts
