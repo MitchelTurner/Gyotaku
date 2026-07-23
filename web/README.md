@@ -41,9 +41,10 @@ Create a **separate** service (not the worker):
 
 1. Root Directory = `web`
 2. **Do not set** `VITE_API_URL` (use same-origin `/api`)
-3. Runtime: `API_PROXY_TARGET=https://<your-api-host>`
-4. Deploy → open **this** service’s public URL
+3. Runtime: `API_PROXY_TARGET=https://gyotaku-api.up.railway.app`
+4. Public domain: `gyotaku.up.railway.app`
+5. Deploy → open https://gyotaku.up.railway.app
 
 Caddy proxies `/api/*` → the API. The worker URL is never the frontend.
 
-Set API `PUBLIC_WEB_URL` to this site’s origin for Stripe redirects.
+Set API `PUBLIC_WEB_URL=https://gyotaku.up.railway.app` for Stripe redirects.

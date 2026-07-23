@@ -63,8 +63,8 @@ Start the Python worker separately (see [`../generator/worker/README.md`](../gen
 ## Stripe
 
 1. Set `STRIPE_SECRET_KEY`
-2. Set `PUBLIC_WEB_URL` to the web origin
-3. Webhook `https://<api>/webhooks/stripe` → `checkout.session.completed` → `STRIPE_WEBHOOK_SECRET`
+2. Set `PUBLIC_WEB_URL=https://gyotaku.up.railway.app`
+3. Webhook `https://gyotaku-api.up.railway.app/webhooks/stripe` → `checkout.session.completed` → `STRIPE_WEBHOOK_SECRET`
 4. Set `OPERATOR_TOKEN` for operator routes
 
 ```bash

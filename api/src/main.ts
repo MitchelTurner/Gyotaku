@@ -7,7 +7,7 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { rawBody: true });
 
   // Always reflect the request Origin. A stale CORS_ORIGINS=http://localhost:5173
-  // on Railway was blocking https://gyotaku-web.up.railway.app → "Failed to fetch".
+  // on Railway was blocking https://gyotaku.up.railway.app → "Failed to fetch".
   // Set CORS_STRICT=1 to enforce CORS_ORIGINS as an allowlist.
   const strict = process.env.CORS_STRICT === '1' || process.env.CORS_STRICT === 'true';
   const origins = (process.env.CORS_ORIGINS || '')

@@ -2,12 +2,12 @@
 
 Turn a salmon photo into gyotaku-style pen-plotter art — then sell a hand-plotted original or a giclée.
 
-**Live** (expected Railway domains)
+**Live**
 
 | Service | URL |
 |---|---|
-| Web app | https://gyotaku-web.up.railway.app |
-| API | https://gyotaku.up.railway.app |
+| Web app | https://gyotaku.up.railway.app |
+| API | https://gyotaku-api.up.railway.app |
 
 If you see Railway’s JSON **`Application not found`**, the domain is not linked to a running service — see [Deployment → Application not found](docs/DEPLOYMENT.md#application-not-found-railway-json-404).
 
@@ -103,9 +103,12 @@ Each artwork stores **seed + style params**, so reprints and re-plots match.
 
 Deploy **three** services from this repo:
 
-1. **web** — root `web/` — public site
-2. **api** — root `api/`
+1. **web** — root `web/` — public site → `gyotaku.up.railway.app`
+2. **api** — root `api/` → `gyotaku-api.up.railway.app`
 3. **worker** — root `generator/` (health JSON only — not the UI)
+
+On **web**, set `API_PROXY_TARGET=https://gyotaku-api.up.railway.app` (leave `VITE_API_URL` empty).  
+On **api**, set `PUBLIC_WEB_URL=https://gyotaku.up.railway.app`.
 
 Worker needs its own `REDIS_URL`, `DATABASE_URL`, and `S3_*` (not inherited from API).
 

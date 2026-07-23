@@ -4,16 +4,16 @@ Gyotaku runs as **three** Railway services from one GitHub repo. Do not point a 
 
 ## Services
 
-| Service | Root directory | Public? | Purpose |
+| Service | Root directory | Public domain | Purpose |
 |---|---|---|---|
-| **web** | `web/` | Yes | React app + Caddy `/api` proxy |
-| **api** | `api/` | Yes | NestJS API + Stripe webhooks |
-| **worker** | `generator/` | Optional | Python job consumer + `/health` |
+| **web** | `web/` | `gyotaku.up.railway.app` | React app + Caddy `/api` proxy |
+| **api** | `api/` | `gyotaku-api.up.railway.app` | NestJS API + Stripe webhooks |
+| **worker** | `generator/` | optional | Python job consumer + `/health` |
 
-Live defaults (change if you rename services):
+Live:
 
-- Web: `https://gyotaku-web.up.railway.app`
-- API: `https://gyotaku.up.railway.app`
+- Web: https://gyotaku.up.railway.app
+- API: https://gyotaku-api.up.railway.app
 
 Also provision **Postgres**, **Redis**, and object storage (**Cloudflare R2** or S3). Link references into each service that needs them.
 
@@ -23,12 +23,12 @@ Also provision **Postgres**, **Redis**, and object storage (**Cloudflare R2** or
 
 | Variable | Value |
 |---|---|
-| `API_PROXY_TARGET` | API public origin, e.g. `https://gyotaku.up.railway.app` |
+| `API_PROXY_TARGET` | `https://gyotaku-api.up.railway.app` |
 | `VITE_API_URL` | **Leave empty** — browser calls same-origin `/api` |
 
-Caddy (or `server.mjs`) proxies `/api/*` → `API_PROXY_TARGET`, which avoids CORS issues.
+Caddy proxies `/api/*` → `API_PROXY_TARGET`, which avoids CORS issues.
 
-Set API `PUBLIC_WEB_URL` to the web origin so Stripe success/cancel redirects work.
+If `API_PROXY_TARGET` still points at `https://gyotaku.up.railway.app` (the web host), `/api/*` will return the SPA HTML instead of Nest JSON — uploads and checkout will fail.
 
 ---
 
@@ -42,8 +42,8 @@ Required:
 | `REDIS_URL` | Redis reference |
 | `S3_*` | Same bucket credentials as the worker (R2 recommended) |
 | `STRIPE_SECRET_KEY` | Checkout |
-| `STRIPE_WEBHOOK_SECRET` | Endpoint `https://<api>/webhooks/stripe` · event `checkout.session.completed` |
-| `PUBLIC_WEB_URL` | Web origin |
+| `STRIPE_WEBHOOK_SECRET` | Endpoint `https://gyotaku-api.up.railway.app/webhooks/stripe` · event `checkout.session.completed` |
+| `PUBLIC_WEB_URL` | `https://gyotaku.up.railway.app` |
 | `OPERATOR_TOKEN` | Shared secret for `/operator` + operator APIs |
 
 Recommended:
@@ -57,7 +57,7 @@ Recommended:
 | `SHIPPING_PROVIDER` + EasyPost/Shippo keys | Buy-label fulfillment |
 | `ALERT_WEBHOOK_URL` | Slack/Discord-style depth alerts |
 
-**CORS:** delete a leftover `CORS_ORIGINS=http://localhost:5173` on Railway — it blocks the live web origin. Prefer leaving origins open (default reflect) or set the real web URL.
+**CORS:** delete a leftover `CORS_ORIGINS=http://localhost:5173` on Railway — it blocks the live web origin. Prefer leaving origins open (default reflect) or set `https://gyotaku.up.railway.app`.
 
 After deploy:
 
@@ -98,55 +98,52 @@ with header `x-railway-fallback: true`, **no service is bound to that domain** (
 ### Check which host is which
 
 ```bash
-# Should be Nest JSON, e.g. {"ok":true,...} — NOT HTML
-curl -sS https://gyotaku.up.railway.app/health | head
+# Should be Nest JSON — NOT HTML
+curl -sS https://gyotaku-api.up.railway.app/health | head
 
 # Should be the React HTML shell — NOT "Application not found"
-curl -sS -o /dev/null -w "%{http_code} %{content_type}\n" https://gyotaku-web.up.railway.app/
+curl -sS -o /dev/null -w "%{http_code} %{content_type}\n" https://gyotaku.up.railway.app/
+
+# Same-origin proxy through web → API (must be JSON, not HTML)
+curl -sS https://gyotaku.up.railway.app/api/health | head
 ```
 
-If `gyotaku.up.railway.app/health` returns **HTML**, the API domain is pointing at the **web** service (wrong root directory or wrong domain assignment).
+If `/api/health` on the web host returns **HTML**, fix **web** `API_PROXY_TARGET` to `https://gyotaku-api.up.railway.app` and redeploy web.
 
-### Fix in Railway dashboard
-
-You need **three** services:
+### Domain map
 
 | Service | Root Directory | Public domain |
 |---|---|---|
-| **api** | `api` | `gyotaku.up.railway.app` |
-| **web** | `web` | `gyotaku-web.up.railway.app` |
+| **web** | `web` | `gyotaku.up.railway.app` |
+| **api** | `api` | `gyotaku-api.up.railway.app` |
 | **worker** | `generator` | optional |
 
-1. Open the project → confirm all three services exist and are **Active** (not removed / crashed).
-2. On each service → **Settings → Root Directory** as above.
-3. **Settings → Networking / Domains**
-   - Attach `gyotaku.up.railway.app` to **api** only
-   - Attach `gyotaku-web.up.railway.app` to **web** only  
-   - If a domain shows “Application not found”, generate a new domain or re-link it to the correct service
-4. **web** variables: `API_PROXY_TARGET=https://gyotaku.up.railway.app` (no `VITE_API_URL`)
-5. **api** variables: Stripe, `PUBLIC_WEB_URL=https://gyotaku-web.up.railway.app`, `OPERATOR_TOKEN`, DB/Redis/S3
+1. Confirm all three services exist and are **Active**.
+2. Root directories as above.
+3. Domains attached as above (do not put the web domain on the API service).
+4. **web**: `API_PROXY_TARGET=https://gyotaku-api.up.railway.app` (no `VITE_API_URL`)
+5. **api**: `PUBLIC_WEB_URL=https://gyotaku.up.railway.app`, Stripe, `OPERATOR_TOKEN`, DB/Redis/S3
 6. Redeploy **api**, then **web**, then **worker**
-7. Re-run the `curl` checks above
-
-Do **not** set the API service root to `web/` — that replaces the API with the SPA and breaks `/health` + checkout.
+7. Re-run the `curl` checks
 
 ---
 
 ## “Failed to fetch” checklist
 
 1. **api** — remove stale `CORS_ORIGINS` (especially `localhost:5173`)
-2. **web** — remove `VITE_API_URL`; set `API_PROXY_TARGET` to the API HTTPS origin
+2. **web** — remove `VITE_API_URL`; set `API_PROXY_TARGET=https://gyotaku-api.up.railway.app`
 3. Redeploy **api** and **web**
-4. Confirm uploads: browser should `PUT` via `/api/uploads/.../content` (API proxy), not a private `localhost` MinIO URL
-5. Confirm **api** + **worker** share real R2/S3 credentials (not default MinIO)
+4. Confirm `https://gyotaku.up.railway.app/api/health` returns Nest JSON
+5. Confirm uploads go via `/api/uploads/.../content` (not a private MinIO URL)
+6. Confirm **api** + **worker** share real R2/S3 credentials
 
 ---
 
 ## Stripe
 
 1. API keys → `STRIPE_SECRET_KEY`
-2. Webhook → `https://<api-host>/webhooks/stripe` for `checkout.session.completed`
-3. `PUBLIC_WEB_URL` = web origin
+2. Webhook → `https://gyotaku-api.up.railway.app/webhooks/stripe` for `checkout.session.completed`
+3. `PUBLIC_WEB_URL=https://gyotaku.up.railway.app`
 
 Local forwarding:
 
@@ -158,5 +155,6 @@ stripe listen --forward-to localhost:3000/webhooks/stripe
 
 ## Health
 
-- `GET https://<api>/health` — Postgres, Redis, S3, Stripe config + alerts
+- `GET https://gyotaku-api.up.railway.app/health` — Postgres, Redis, S3, Stripe config + alerts
+- `GET https://gyotaku.up.railway.app/api/health` — same, via web proxy
 - Worker `/health` — Redis + storage probes, queue depth
