@@ -2,8 +2,9 @@
   "$schema": "https://schema.railpack.com",
   "provider": "node",
   "deploy": {
+    "startCommand": "npm run start",
     "variables": {
-      "RAILPACK_SPA_OUTPUT_DIR": "dist"
+      "API_PROXY_TARGET": "https://gyotaku-api.up.railway.app"
     }
   }
 }

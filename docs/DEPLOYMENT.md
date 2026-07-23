@@ -26,9 +26,12 @@ Also provision **Postgres**, **Redis**, and object storage (**Cloudflare R2** or
 | `API_PROXY_TARGET` | `https://gyotaku-api.up.railway.app` |
 | `VITE_API_URL` | **Leave empty** — browser calls same-origin `/api` |
 
-Caddy proxies `/api/*` → `API_PROXY_TARGET`, which avoids CORS issues.
+The web service runs `node server.mjs`, which serves `dist/` and proxies `/api/*` → `API_PROXY_TARGET` (strips the `/api` prefix). That avoids CORS for browser uploads/checkout.
 
-If `API_PROXY_TARGET` still points at `https://gyotaku.up.railway.app` (the web host), `/api/*` will return the SPA HTML instead of Nest JSON — uploads and checkout will fail.
+**Required on the web service:** `API_PROXY_TARGET=https://gyotaku-api.up.railway.app`  
+Leave `VITE_API_URL` empty.
+
+If `API_PROXY_TARGET` is missing or still points at `https://gyotaku.up.railway.app` (the web host), `/api/*` returns HTML or 405 and **photo upload fails**.
 
 ---
 
