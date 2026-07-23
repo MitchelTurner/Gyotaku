@@ -36,6 +36,7 @@ export function loadControls(): StyleControls {
         parsed.species === 'chinook' ||
         parsed.species === 'coho' ||
         parsed.species === 'sockeye' ||
+        parsed.species === 'pink' ||
         parsed.species === 'other'
           ? parsed.species
           : null,

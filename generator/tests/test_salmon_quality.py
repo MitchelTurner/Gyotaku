@@ -18,6 +18,7 @@ from gyotaku.params import StyleParams, resolve_params
 from gyotaku.salmon import (
     fin_protrusion_score,
     fish_likeness,
+    normalize_species,
     salmon_matte_bonus,
     silhouette_aspect,
     species_density_overrides,
@@ -161,7 +162,13 @@ def test_committed_baseline_matches_sources_expect():
 
 
 def test_species_overrides_table_complete():
-    for sp in ("chinook", "coho", "sockeye"):
+    for sp in ("chinook", "coho", "sockeye", "pink"):
         assert species_density_overrides(sp)
     assert species_density_overrides("other") == {}
     assert species_density_overrides(None) == {}
+
+
+def test_species_aliases():
+    assert normalize_species("king") == "chinook"
+    assert normalize_species("humpy") == "pink"
+    assert resolve_params(overrides={"species": "king"}).species == "chinook"

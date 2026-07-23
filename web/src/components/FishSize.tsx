@@ -1,14 +1,7 @@
+import { useCallback, useRef } from 'react'
+
 const MIN = 4
 const MAX = 60
-
-/** Common salmon lengths (nose–tail) for quick pick. */
-export const LENGTH_PRESETS: { label: string; inches: number; hint: string }[] = [
-  { label: 'Pink', inches: 18, hint: 'humpy' },
-  { label: 'Sockeye', inches: 22, hint: 'red' },
-  { label: 'Coho', inches: 26, hint: 'silver' },
-  { label: 'Chinook', inches: 34, hint: 'king' },
-  { label: 'Trophy', inches: 42, hint: 'big king' },
-]
 
 type Props = {
   value: number | null
@@ -17,7 +10,7 @@ type Props = {
   showTape?: boolean
 }
 
-/** Nose-to-tail length in inches → life-size plot. */
+/** Nose-to-tail length in inches → life-size print. */
 export function FishSizeInput({
   value,
   onChange,
@@ -33,34 +26,17 @@ export function FishSizeInput({
         htmlFor={id}
         className="mb-2 block text-[11px] uppercase tracking-[0.18em] text-ink/40"
       >
-        Fish length
+        Fish length (nose to tip)
       </label>
 
-      <div className="mb-3 flex flex-wrap gap-2">
-        {LENGTH_PRESETS.map((p) => {
-          const active = clamped != null && Math.abs(clamped - p.inches) < 0.01
-          return (
-            <button
-              key={p.label}
-              type="button"
-              onClick={() => onChange(p.inches)}
-              className={
-                active
-                  ? 'rounded-sm bg-ink px-2.5 py-1.5 text-xs font-medium text-foam'
-                  : 'rounded-sm bg-ink/5 px-2.5 py-1.5 text-xs font-medium text-ink/70 transition hover:bg-ink/10'
-              }
-              title={`${p.hint} · ~${p.inches}"`}
-            >
-              {p.label}{' '}
-              <span className={active ? 'text-foam/60' : 'text-ink/40'}>
-                {p.inches}"
-              </span>
-            </button>
-          )
-        })}
-      </div>
+      {showTape && (
+        <TapeMeasure
+          inches={clamped}
+          onPick={(n) => onChange(clamp(n))}
+        />
+      )}
 
-      <div className="flex items-center gap-2">
+      <div className="mt-4 flex items-center gap-2">
         <input
           id={id}
           type="number"
@@ -84,19 +60,17 @@ export function FishSizeInput({
         <span className="shrink-0 text-sm text-ink/50">in</span>
       </div>
 
-      {showTape && <TapeMeasure inches={clamped} onPick={onChange} />}
-
       <p className="mt-2 text-xs leading-relaxed text-ink/45">
-        Nose to tail tip. The plot is drawn at this exact length
+        Measure nose to tail tip. The print is drawn at this exact length
         {clamped != null
           ? ` (${formatInches(clamped)} · paper grows to fit).`
-          : ' (leave blank to fit a standard sheet).'}
+          : ' (or skip below to fit a standard sheet).'}
       </p>
     </div>
   )
 }
 
-/** Visual inch tape — click along the scale to set length. */
+/** High-contrast inch tape — click or drag along the scale to set length. */
 function TapeMeasure({
   inches,
   onPick,
@@ -104,74 +78,129 @@ function TapeMeasure({
   inches: number | null
   onPick: (n: number) => void
 }) {
-  const labels = [12, 24, 36, 48, 60]
+  const trackRef = useRef<HTMLDivElement>(null)
+  const dragging = useRef(false)
+
+  const pickFromClientX = useCallback(
+    (clientX: number) => {
+      const el = trackRef.current
+      if (!el) return
+      const rect = el.getBoundingClientRect()
+      const x = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width))
+      const n = Math.round((MIN + x * (MAX - MIN)) * 4) / 4
+      onPick(clamp(n))
+    },
+    [onPick],
+  )
+
   const pct =
     inches != null ? ((clamp(inches) - MIN) / (MAX - MIN)) * 100 : null
 
+  const ticks = Array.from({ length: MAX - MIN + 1 }, (_, i) => MIN + i)
+  const labelInches = [4, 12, 24, 36, 48, 60]
+
   return (
-    <div className="mt-4">
-      <p className="mb-2 text-[11px] uppercase tracking-[0.18em] text-ink/40">
-        Tape
-      </p>
-      <button
-        type="button"
-        className="relative block h-11 w-full overflow-hidden rounded-sm bg-[linear-gradient(180deg,#f0ebe3,#e4ddd2)] text-left ring-1 ring-ink/10"
+    <div>
+      <div className="mb-2 flex items-end justify-between gap-3">
+        <p className="text-[11px] uppercase tracking-[0.18em] text-ink/40">
+          Tape measure
+        </p>
+        <p className="font-display text-2xl tabular-nums text-ink">
+          {inches != null ? formatInches(inches) : '—'}
+        </p>
+      </div>
+
+      <div
+        ref={trackRef}
+        role="slider"
+        tabIndex={0}
         aria-label="Fish length tape measure"
-        onClick={(e) => {
-          const rect = e.currentTarget.getBoundingClientRect()
-          const x = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width))
-          const n = Math.round((MIN + x * (MAX - MIN)) * 4) / 4
-          onPick(clamp(n))
+        aria-valuemin={MIN}
+        aria-valuemax={MAX}
+        aria-valuenow={inches ?? undefined}
+        aria-valuetext={inches != null ? formatInches(inches) : 'not set'}
+        className="relative h-20 w-full cursor-pointer touch-none select-none overflow-hidden rounded-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.55)] ring-2 ring-ink/25 outline-none focus-visible:ring-sea"
+        style={{
+          background:
+            'linear-gradient(180deg, #f3e2a8 0%, #e8c85a 45%, #d4a93a 100%)',
+        }}
+        onPointerDown={(e) => {
+          dragging.current = true
+          e.currentTarget.setPointerCapture(e.pointerId)
+          pickFromClientX(e.clientX)
+        }}
+        onPointerMove={(e) => {
+          if (!dragging.current) return
+          pickFromClientX(e.clientX)
+        }}
+        onPointerUp={() => {
+          dragging.current = false
+        }}
+        onPointerCancel={() => {
+          dragging.current = false
+        }}
+        onKeyDown={(e) => {
+          const base = inches ?? 24
+          if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
+            e.preventDefault()
+            onPick(clamp(base + (e.shiftKey ? 1 : 0.25)))
+          } else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
+            e.preventDefault()
+            onPick(clamp(base - (e.shiftKey ? 1 : 0.25)))
+          }
         }}
       >
-        <svg
-          className="pointer-events-none absolute inset-0 h-full w-full"
-          viewBox={`0 0 ${MAX - MIN} 44`}
-          preserveAspectRatio="none"
-          aria-hidden
-        >
-          {Array.from({ length: MAX - MIN + 1 }, (_, i) => {
-            const inch = MIN + i
+        {/* Inch ticks — CSS so they stay visible at any width */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-12">
+          {ticks.map((inch) => {
             const major = inch % 6 === 0
             const mid = inch % 2 === 0
-            const h = major ? 28 : mid ? 16 : 8
+            const left = ((inch - MIN) / (MAX - MIN)) * 100
+            const h = major ? '100%' : mid ? '62%' : '34%'
             return (
-              <line
+              <span
                 key={inch}
-                x1={i}
-                x2={i}
-                y1={0}
-                y2={h}
-                stroke="rgba(20,24,22,0.28)"
-                strokeWidth={major ? 0.15 : 0.08}
-                vectorEffect="non-scaling-stroke"
+                className="absolute top-0 w-px -translate-x-1/2 bg-ink"
+                style={{
+                  left: `${left}%`,
+                  height: h,
+                  opacity: major ? 0.85 : mid ? 0.55 : 0.35,
+                  width: major ? 2 : 1,
+                }}
               />
             )
           })}
-        </svg>
-        <div className="pointer-events-none absolute inset-x-0 bottom-1 flex justify-between px-1 text-[9px] text-ink/45">
-          {labels.map((m) => (
+        </div>
+
+        {/* Foot / inch labels */}
+        <div className="pointer-events-none absolute inset-x-0 bottom-1.5 h-5">
+          {labelInches.map((m) => (
             <span
               key={m}
-              className="absolute -translate-x-1/2"
+              className="absolute -translate-x-1/2 text-[11px] font-semibold tabular-nums text-ink/80"
               style={{ left: `${((m - MIN) / (MAX - MIN)) * 100}%` }}
             >
               {m}"
             </span>
           ))}
         </div>
+
+        {/* Selection marker */}
         {pct != null && (
           <span
-            className="pointer-events-none absolute top-0 bottom-0 w-0.5 bg-sea transition-[left] duration-200"
-            style={{ left: `calc(${pct}% - 1px)` }}
+            className="pointer-events-none absolute top-0 bottom-0 z-10 w-1 -translate-x-1/2 bg-sea shadow-[0_0_0_2px_rgba(255,255,255,0.65)]"
+            style={{ left: `${pct}%` }}
           >
-            <span className="absolute left-1/2 top-1 -translate-x-1/2 whitespace-nowrap rounded-sm bg-sea px-1.5 py-0.5 text-[10px] font-medium text-foam">
+            <span className="absolute left-1/2 top-1.5 -translate-x-1/2 whitespace-nowrap rounded-sm bg-ink px-2 py-0.5 text-[11px] font-semibold text-foam shadow-sm">
               {formatInches(inches!)}
             </span>
           </span>
         )}
-      </button>
-      <p className="mt-1.5 text-[10px] text-ink/35">Tap the tape to set length</p>
+      </div>
+
+      <p className="mt-2 text-xs text-ink/50">
+        Drag or tap the tape · arrows adjust by ¼" (Shift = 1")
+      </p>
     </div>
   )
 }

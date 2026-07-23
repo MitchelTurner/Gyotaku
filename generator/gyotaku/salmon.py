@@ -11,10 +11,10 @@ from typing import Any, Literal, Optional
 import cv2
 import numpy as np
 
-SpeciesTag = Literal["chinook", "coho", "sockeye", "other"]
+SpeciesTag = Literal["chinook", "coho", "sockeye", "pink", "other"]
 SideTag = Literal["left", "right", "unknown"]
 
-VALID_SPECIES = frozenset({"chinook", "coho", "sockeye", "other"})
+VALID_SPECIES = frozenset({"chinook", "coho", "sockeye", "pink", "other"})
 VALID_SIDES = frozenset({"left", "right", "unknown"})
 
 
@@ -121,6 +121,15 @@ def normalize_species(raw: Any) -> Optional[SpeciesTag]:
     if raw is None or raw == "":
         return None
     s = str(raw).strip().lower()
+    # Common aliases from the UI / captains
+    if s in ("king", "chinook king"):
+        s = "chinook"
+    if s in ("humpy", "humpback"):
+        s = "pink"
+    if s in ("red", "red salmon"):
+        s = "sockeye"
+    if s in ("silver",):
+        s = "coho"
     if s in VALID_SPECIES:
         return s  # type: ignore[return-value]
     return None
@@ -170,6 +179,17 @@ def species_density_overrides(species: Optional[str]) -> dict[str, Any]:
             "edge_pass_density": 0.58,
             "orientation_sigma": 2.3,
             "max_stroke_length_px": 52.0,
+        }
+    if tag == "pink":
+        return {
+            "seed_count": 4400,
+            "min_separation_light": 4.0,
+            "min_separation_dark": 1.25,
+            "posterize_levels": 4,
+            "density_gamma": 1.4,
+            "edge_pass_density": 0.48,
+            "orientation_sigma": 2.6,
+            "max_stroke_length_px": 58.0,
         }
     return {}
 

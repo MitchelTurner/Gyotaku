@@ -158,6 +158,7 @@ function controlsFromStyleParams(style: Record<string, unknown>): StyleControls 
     style.species === 'chinook' ||
     style.species === 'coho' ||
     style.species === 'sockeye' ||
+    style.species === 'pink' ||
     style.species === 'other'
       ? style.species
       : null

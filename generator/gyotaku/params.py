@@ -21,7 +21,7 @@ from gyotaku.salmon import (
 
 CanvasSize = Literal["A3", "A2", "18x24in"]
 MarkStrategyName = Literal["flowfield", "contour", "stipple"]
-SpeciesTag = Literal["chinook", "coho", "sockeye", "other"]
+SpeciesTag = Literal["chinook", "coho", "sockeye", "pink", "other"]
 SideTag = Literal["left", "right", "unknown"]
 
 # Physical canvas sizes in millimetres (width × height, landscape available via rotate)

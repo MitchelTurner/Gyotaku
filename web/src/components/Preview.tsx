@@ -4,7 +4,13 @@ import type { RenditionResponse } from '../lib/api'
 import { formatPaperSize, formatPlotTime } from '../lib/format'
 import { FishSizeInput } from './FishSize'
 
-export type SpeciesTag = 'chinook' | 'coho' | 'sockeye' | 'other' | null
+export type SpeciesTag =
+  | 'chinook'
+  | 'coho'
+  | 'sockeye'
+  | 'pink'
+  | 'other'
+  | null
 export type SideTag = 'left' | 'right' | 'unknown' | null
 
 export type StyleControls = {
@@ -169,13 +175,14 @@ export function Preview({
           ))}
         </ControlGroup>
 
-        <ControlGroup label="Species (optional)">
+        <ControlGroup label="Species (optional — style only)">
           {(
             [
               [null, 'Any'],
-              ['chinook', 'Chinook'],
+              ['chinook', 'King'],
               ['coho', 'Coho'],
               ['sockeye', 'Sockeye'],
+              ['pink', 'Pink'],
             ] as const
           ).map(([value, label]) => (
             <Choice
