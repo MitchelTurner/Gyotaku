@@ -27,7 +27,7 @@ See also:
 | `GET` | `/orders/:id` | Order status (session-scoped) |
 | `GET` | `/orders/:id/artifacts` | Paid unlock: clean preview + SVG |
 | `GET` | `/orders/availability/plotted` | Queue ETA + open/closed |
-| `POST` | `/webhooks/stripe` | `checkout.session.completed` (raw body) |
+| `POST` | `/webhooks/stripe` | Stripe webhooks (raw body): `checkout.session.completed`, `checkout.session.expired`, `charge.refunded` |
 | `GET` | `/affiliates/:code` | Public captain resolve for QR landing |
 | `GET` | `/operator/orders` | Fulfillment queue (`x-operator-token`) |
 | `PATCH` | `/operator/orders/:id` | Update fulfillment status |
@@ -64,8 +64,15 @@ Start the Python worker separately (see [`../generator/worker/README.md`](../gen
 
 1. Set `STRIPE_SECRET_KEY`
 2. Set `PUBLIC_WEB_URL=https://gyotaku.up.railway.app`
-3. Webhook `https://gyotaku-api.up.railway.app/webhooks/stripe` → `checkout.session.completed` → `STRIPE_WEBHOOK_SECRET`
-4. Set `OPERATOR_TOKEN` for operator routes
+3. Webhook `https://gyotaku-api.up.railway.app/webhooks/stripe` → events:
+   - `checkout.session.completed` → mark PAID
+   - `checkout.session.expired` → cancel unpaid
+   - `charge.refunded` → mark REFUNDED (full refunds)
+4. Copy signing secret → `STRIPE_WEBHOOK_SECRET`
+5. Set `OPERATOR_TOKEN` for operator routes
+6. Optional: enable Stripe Tax in the Dashboard, then set `STRIPE_AUTOMATIC_TAX=true` (requires billing address; checkout adds `automatic_tax` + product tax codes)
+
+Checkout also uses idempotency keys (`checkout-order-<orderId>`), `client_reference_id`, and `allow_promotion_codes`.
 
 ```bash
 stripe listen --forward-to localhost:3000/webhooks/stripe
