@@ -27,9 +27,11 @@ Per order you can:
 
 - Download **300 DPI print** PNG (and SVG if present)
 - **Queue 300 DPI** if missing `printKey`
-- Submit the PNG to **Prodigi** using the quote’s `fulfillmentSku` hint + Stripe shipping address
-- **Buy label + ship** (EasyPost or Shippo) if you ship yourself — or let Prodigi ship direct
+- **Submit to Prodigi** if auto-submit missed (needs `PRODIGI_API_KEY` on API)
+- **Buy label + ship** (EasyPost/Shippo) only when *not* using Prodigi
 - Advance status with the status chips
+
+Paid print/framed orders normally auto-submit once `print.png` is ready. Rows show `prodigiOrderId` + stage; Prodigi callbacks set tracking and `SHIPPED`.
 
 Orders show fish length, SKU, shipping address, gift note, and referring captain (if any).
 

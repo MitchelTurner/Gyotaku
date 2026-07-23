@@ -18,6 +18,8 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
+from urllib import request as urllib_request
+from urllib.error import HTTPError, URLError
 
 import boto3
 import psycopg
@@ -446,6 +448,43 @@ def process_job(job: dict[str, Any]) -> None:
         process_generate_job(job)
 
 
+def notify_print_ready(rendition_id: str) -> None:
+    """Tell the API print.png is ready so it can auto-submit to Prodigi."""
+    base = (
+        os.environ.get("GYOTAKU_API_URL")
+        or os.environ.get("PUBLIC_API_URL")
+        or ""
+    ).rstrip("/")
+    token = (
+        os.environ.get("INTERNAL_JOB_TOKEN")
+        or os.environ.get("OPERATOR_TOKEN")
+        or ""
+    )
+    if not base or not token:
+        log(
+            f"{rendition_id}: print-ready notify skipped "
+            "(set GYOTAKU_API_URL + INTERNAL_JOB_TOKEN on the worker)"
+        )
+        return
+    url = f"{base}/internal/print-ready"
+    payload = json.dumps({"renditionId": rendition_id}).encode("utf-8")
+    req = urllib_request.Request(
+        url,
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "x-internal-token": token,
+        },
+        method="POST",
+    )
+    try:
+        with urllib_request.urlopen(req, timeout=45) as resp:
+            body = resp.read().decode("utf-8", errors="replace")[:400]
+            log(f"{rendition_id}: print-ready notified ({resp.status}) {body}")
+    except (HTTPError, URLError, TimeoutError, OSError) as e:
+        log(f"{rendition_id}: print-ready notify failed: {e}")
+
+
 def process_print_job(job: dict[str, Any]) -> None:
     """Re-run pipeline with write_print=True and upload printKey for giclée POD."""
     rendition_id = job["renditionId"]
@@ -456,12 +495,13 @@ def process_print_job(job: dict[str, Any]) -> None:
     s3 = s3_client()
     conn = db_connect()
     try:
-        # Skip if already present
+        # Skip if already present — still notify API (retry Prodigi submit)
         with conn.cursor() as cur:
             cur.execute('SELECT "printKey" FROM "Rendition" WHERE id = %s', (rendition_id,))
             row = cur.fetchone()
             if row and row[0]:
-                log(f"{rendition_id}: printKey already set — skip")
+                log(f"{rendition_id}: printKey already set — skip generate, notify API")
+                notify_print_ready(rendition_id)
                 return
 
         with tempfile.TemporaryDirectory(prefix="gyotaku-print-") as tmp:
@@ -504,6 +544,7 @@ def process_print_job(job: dict[str, Any]) -> None:
             )
             update_rendition(conn, rendition_id, {"printKey": print_key})
             log(f"{rendition_id}: printKey ready")
+            notify_print_ready(rendition_id)
     except Exception as e:
         log(f"{rendition_id}: print FAILED {e}")
         traceback.print_exc()

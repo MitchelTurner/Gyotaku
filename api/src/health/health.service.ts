@@ -43,14 +43,15 @@ export class HealthService implements OnModuleDestroy {
   }
 
   async probe() {
-    const [postgres, redisCheck, storage, stripe] = await Promise.all([
+    const [postgres, redisCheck, storage, stripe, prodigi] = await Promise.all([
       this.checkPostgres(),
       this.checkRedis(),
       this.checkStorage(),
       Promise.resolve(this.checkStripe()),
+      Promise.resolve(this.checkProdigi()),
     ]);
 
-    const checks = { postgres, redis: redisCheck.check, storage, stripe };
+    const checks = { postgres, redis: redisCheck.check, storage, stripe, prodigi };
     const alerts = this.buildAlerts(checks, redisCheck.depth, redisCheck.deadLetterDepth);
 
     const criticalDown = [postgres, redisCheck.check, storage].some(
@@ -84,6 +85,15 @@ export class HealthService implements OnModuleDestroy {
       stripe: {
         secretConfigured: Boolean(process.env.STRIPE_SECRET_KEY),
         webhookConfigured: Boolean(process.env.STRIPE_WEBHOOK_SECRET),
+      },
+      prodigi: {
+        configured: Boolean((process.env.PRODIGI_API_KEY || '').trim()),
+        env: (process.env.PRODIGI_ENV || 'sandbox').trim().toLowerCase(),
+        autoSubmit:
+          Boolean((process.env.PRODIGI_API_KEY || '').trim()) &&
+          !['0', 'false', 'no', 'off'].includes(
+            (process.env.PRODIGI_AUTO_SUBMIT || 'true').trim().toLowerCase(),
+          ),
       },
       time: new Date().toISOString(),
     };
@@ -179,6 +189,15 @@ export class HealthService implements OnModuleDestroy {
       };
     }
     return { status: 'ok', detail: 'configured' };
+  }
+
+  private checkProdigi(): HealthCheck {
+    const key = Boolean((process.env.PRODIGI_API_KEY || '').trim());
+    if (!key) {
+      return { status: 'skipped', detail: 'PRODIGI_API_KEY not set' };
+    }
+    const env = (process.env.PRODIGI_ENV || 'sandbox').trim().toLowerCase();
+    return { status: 'ok', detail: `configured env=${env}` };
   }
 
   private buildAlerts(

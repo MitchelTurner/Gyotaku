@@ -28,6 +28,9 @@ See also:
 | `GET` | `/orders/:id/artifacts` | Paid unlock: clean preview + SVG |
 | `GET` | `/orders/availability/plotted` | Queue ETA + open/closed |
 | `POST` | `/webhooks/stripe` | `checkout.session.completed` (raw body) |
+| `POST` | `/webhooks/prodigi` | Prodigi order stage / shipment callbacks |
+| `POST` | `/internal/print-ready` | Worker hook after `print.png` (auto Prodigi) |
+| `POST` | `/operator/orders/:id/prodigi` | Manual Prodigi submit |
 | `GET` | `/affiliates/:code` | Public captain resolve for QR landing |
 | `GET` | `/operator/orders` | Fulfillment queue (`x-operator-token`) |
 | `PATCH` | `/operator/orders/:id` | Update fulfillment status |

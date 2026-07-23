@@ -36,9 +36,13 @@ On the **worker** service (root directory `generator/`), set variable **referenc
 ```
 DATABASE_URL=${{Postgres.DATABASE_URL}}
 REDIS_URL=${{Redis.REDIS_URL}}
+GYOTAKU_API_URL=https://gyotaku-api.up.railway.app
+INTERNAL_JOB_TOKEN=<same as API>
 ```
 
 Copy the API’s `S3_*` vars exactly. See [`worker/.env.example`](.env.example).
+
+`GYOTAKU_API_URL` + `INTERNAL_JOB_TOKEN` let the worker call `POST /internal/print-ready` so Prodigi auto-submit can run after `print.png` uploads.
 
 ## Job payloads
 

@@ -62,7 +62,10 @@ Recommended:
 | `SHIPPING_DOMESTIC_CENTS` | Flat US/CA shipping line item |
 | `PLOTTED_QUEUE_MAX_DAYS` | Auto-close plotted originals / waitlist |
 | `PRICE_*` / `PRICE_BAND_*` | Length-band SKU overrides — see [PRICING.md](PRICING.md) |
-| `SHIPPING_PROVIDER` + EasyPost/Shippo keys | Buy-label fulfillment |
+| `PRODIGI_API_KEY` + `PRODIGI_ENV` | Auto print/ship via Prodigi — see [FULFILLMENT.md](FULFILLMENT.md) |
+| `PUBLIC_API_URL` | API origin for Prodigi callbacks (`https://gyotaku-api.up.railway.app`) |
+| `INTERNAL_JOB_TOKEN` | Worker → API print-ready hook (defaults to `OPERATOR_TOKEN`) |
+| `SHIPPING_PROVIDER` + EasyPost/Shippo keys | Optional self-ship labels (skip if Prodigi ships) |
 | `ALERT_WEBHOOK_URL` | Slack/Discord-style depth alerts |
 
 **CORS:** delete a leftover `CORS_ORIGINS=http://localhost:5173` on Railway — it blocks the live web origin. Prefer leaving origins open (default reflect) or set `https://gyotaku.up.railway.app`.
@@ -73,7 +76,7 @@ After deploy:
 npx prisma migrate deploy   # runs in release / start if configured
 ```
 
-Ensure migrations through `affiliate_captains` and `business_pricing_waitlist` are applied.
+Ensure migrations through `affiliate_captains`, `business_pricing_waitlist`, and `prodigi_fulfillment` are applied.
 
 ---
 
@@ -86,6 +89,8 @@ Root directory **`generator/`**. Variables are **not** inherited from the API se
 | `REDIS_URL` | Redis reference |
 | `DATABASE_URL` | Postgres reference |
 | `S3_*` | **Identical** to API (same bucket) |
+| `GYOTAKU_API_URL` | `https://gyotaku-api.up.railway.app` — notify after `print.png` |
+| `INTERNAL_JOB_TOKEN` | Same secret as API (or reuse `OPERATOR_TOKEN`) |
 
 Worker `/health` returns `503` with `"missing":["REDIS_URL"]` until Redis is wired.
 

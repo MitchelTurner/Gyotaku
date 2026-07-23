@@ -34,6 +34,7 @@ export type OperatorOrder = {
   shippingCents?: number
   sku?: string | null
   skuLabel?: string | null
+  fulfillmentSku?: string | null
   giftNote?: string | null
   currency: string
   fishLengthIn: number | null
@@ -56,6 +57,8 @@ export type OperatorOrder = {
   shippingLabelUrl: string | null
   shippingCarrier: string | null
   shippingService: string | null
+  prodigiOrderId?: string | null
+  prodigiStatus?: string | null
   fulfillmentNote: string | null
   paidAt: string | null
   createdAt: string
@@ -162,6 +165,12 @@ export function createOperatorLabel(id: string) {
 
 export function requestOperatorPrint(id: string) {
   return operatorRequest<OperatorOrder>(`/operator/orders/${id}/print`, {
+    method: 'POST',
+  })
+}
+
+export function submitOperatorProdigi(id: string) {
+  return operatorRequest<OperatorOrder>(`/operator/orders/${id}/prodigi`, {
     method: 'POST',
   })
 }

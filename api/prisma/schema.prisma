@@ -69,6 +69,8 @@ model Order {
   /// Length-band SKU e.g. PLOT-M, GIC-L
   sku                   String?
   skuLabel              String?
+  /// Prodigi catalog SKU hint e.g. GLOBAL-HGE-16X20
+  fulfillmentSku        String?
   /// Product-only cents (excludes shipping)
   productAmountCents    Int?
   /// Flat domestic shipping line item
@@ -100,6 +102,10 @@ model Order {
   shippingLabelUrl      String?
   shippingCarrier       String?
   shippingService       String?
+  /// Prodigi order id (ord_…) when auto-submitted
+  prodigiOrderId        String?        @unique
+  /// Last known Prodigi stage (InProgress, Complete, Cancelled, …)
+  prodigiStatus         String?
   stripeCheckoutSession String?        @unique
   stripePaymentIntent   String?
   paidAt                DateTime?
@@ -111,6 +117,7 @@ model Order {
   @@index([status])
   @@index([productType, status])
   @@index([affiliateId])
+  @@index([prodigiOrderId])
   @@unique([productType, editionNumber])
 }
 

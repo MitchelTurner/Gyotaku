@@ -15,6 +15,7 @@ import {
   requestOperatorPrint,
   retryRendition,
   setOperatorToken,
+  submitOperatorProdigi,
   type FailedRendition,
   type OperatorAffiliate,
   type OperatorMetrics,
@@ -226,6 +227,19 @@ export function OperatorQueue() {
     }
   }
 
+  async function submitProdigi(order: OperatorOrder) {
+    setBusyId(order.id)
+    setError(null)
+    try {
+      const updated = await submitOperatorProdigi(order.id)
+      setOrders((prev) => prev.map((o) => (o.id === order.id ? updated : o)))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Prodigi submit failed')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   if (!authed) {
     return (
       <section className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-6 py-12">
@@ -314,7 +328,7 @@ export function OperatorQueue() {
               <span className="text-ink/40"> (plotted originals retired)</span>
             </p>
             <p className="mt-1 text-xs text-ink/40">
-              Fulfill via Prodigi — see docs/FULFILLMENT.md · download 300 DPI print from each order
+              Paid orders auto-submit to Prodigi once the 300 DPI print is ready · retry from each row if needed
             </p>
           </div>
 
@@ -347,6 +361,7 @@ export function OperatorQueue() {
                 onStatus={(s) => void setStatus(order, s)}
                 onLabel={() => void buyLabel(order)}
                 onPrint={() => void queuePrint(order)}
+                onProdigi={() => void submitProdigi(order)}
               />
             ))}
           </ul>
@@ -605,12 +620,14 @@ function OrderCard({
   onStatus,
   onLabel,
   onPrint,
+  onProdigi,
 }: {
   order: OperatorOrder
   busy: boolean
   onStatus: (s: OperatorStatus) => void
   onLabel: () => void
   onPrint: () => void
+  onProdigi: () => void
 }) {
   const paper = formatPaperSize(order.paperWidthMm, order.paperHeightMm)
   const plot = formatPlotTime(order.estPlotSeconds)
@@ -671,6 +688,13 @@ function OrderCard({
           {order.giftNote && (
             <p className="mt-1 text-xs text-ink/55">Gift note: {order.giftNote}</p>
           )}
+          {order.prodigiOrderId && (
+            <p className="mt-1 text-xs text-ink/55">
+              Prodigi {order.prodigiOrderId}
+              {order.prodigiStatus ? ` · ${order.prodigiStatus}` : ''}
+              {order.fulfillmentSku ? ` · ${order.fulfillmentSku}` : ''}
+            </p>
+          )}
           {order.trackingNumber && (
             <p className="mt-1 text-xs text-ink/55">
               Tracking {order.trackingNumber}
@@ -723,14 +747,29 @@ function OrderCard({
                 Queue 300 DPI
               </button>
             )}
-            <button
-              type="button"
-              disabled={busy || Boolean(order.shippingLabelUrl)}
-              onClick={onLabel}
-              className="rounded-sm border border-ink/15 px-3 py-2 text-xs font-medium text-ink/70 disabled:opacity-50"
-            >
-              {order.shippingLabelUrl ? 'Label bought' : 'Buy label + ship'}
-            </button>
+            {(order.productType === 'GICLEE' ||
+              order.productType === 'GICLEE_FRAMED') &&
+              order.hasPrint &&
+              !order.prodigiOrderId && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={onProdigi}
+                className="rounded-sm bg-sea px-3 py-2 text-xs font-medium text-foam hover:bg-sea-deep disabled:opacity-50"
+              >
+                Submit to Prodigi
+              </button>
+            )}
+            {!order.prodigiOrderId && (
+              <button
+                type="button"
+                disabled={busy || Boolean(order.shippingLabelUrl)}
+                onClick={onLabel}
+                className="rounded-sm border border-ink/15 px-3 py-2 text-xs font-medium text-ink/70 disabled:opacity-50"
+              >
+                {order.shippingLabelUrl ? 'Label bought' : 'Buy label + ship'}
+              </button>
+            )}
           </div>
 
           <div className="mt-3 flex flex-wrap gap-1.5">

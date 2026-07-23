@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -94,6 +95,37 @@ export class OrdersController {
     return this.orders.handleStripeWebhook(raw, signature);
   }
 
+  /** Prodigi CloudEvents callbacks (stage / shipment updates). */
+  @Post('webhooks/prodigi')
+  prodigiWebhook(@Body() body: unknown) {
+    return this.orders.handleProdigiWebhook(body);
+  }
+
+  /**
+   * Generator worker calls this after uploading print.png.
+   * Auth: x-internal-token = INTERNAL_JOB_TOKEN or OPERATOR_TOKEN.
+   */
+  @Post('internal/print-ready')
+  printReady(
+    @Headers('x-internal-token') token: string | undefined,
+    @Body() body: { renditionId?: string },
+  ) {
+    assertInternal(token);
+    if (!body?.renditionId) {
+      throw new BadRequestException('renditionId is required');
+    }
+    return this.orders.onPrintReady(body.renditionId);
+  }
+
+  @Post('operator/orders/:id/prodigi')
+  submitProdigi(
+    @Headers('x-operator-token') token: string | undefined,
+    @Param('id') id: string,
+  ) {
+    assertOperator(token);
+    return this.orders.submitProdigi(id);
+  }
+
   @Get('operator/orders')
   listOperator(
     @Headers('x-operator-token') token: string | undefined,
@@ -167,5 +199,13 @@ function assertOperator(token?: string) {
   const expected = process.env.OPERATOR_TOKEN;
   if (!expected || !token || token !== expected) {
     throw new UnauthorizedException('Invalid operator token');
+  }
+}
+
+function assertInternal(token?: string) {
+  const expected =
+    process.env.INTERNAL_JOB_TOKEN || process.env.OPERATOR_TOKEN;
+  if (!expected || !token || token !== expected) {
+    throw new UnauthorizedException('Invalid internal token');
   }
 }

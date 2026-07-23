@@ -19,13 +19,28 @@ import {
   UpdateFulfillmentDto,
 } from './dto';
 import { PYTHON_JOB_QUEUE, type PrintJobPayload } from './print-jobs';
-import { isGicleeProduct, priceQuote, productLabel } from './pricing';
+import {
+  bandForLength,
+  fulfillmentSkuFor,
+  isGicleeProduct,
+  priceQuote,
+  productLabel,
+} from './pricing';
 import { isPlottedQueueOpen } from './queue-eta';
 import {
   purchaseShippingLabel,
   ShippingAddressError,
   ShippingNotConfiguredError,
 } from './shipping';
+import {
+  createProdigiOrder,
+  extractProdigiShipment,
+  mapProdigiStageToOrderStatus,
+  ProdigiApiError,
+  ProdigiNotConfiguredError,
+  prodigiAutoSubmitEnabled,
+  prodigiConfigured,
+} from './prodigi';
 
 const PAID_STATUSES: OrderStatus[] = [
   'PAID',
@@ -261,6 +276,7 @@ export class OrdersService implements OnModuleDestroy {
         shippingCents: quote.shippingCents,
         sku: quote.sku,
         skuLabel: quote.skuLabel,
+        fulfillmentSku: quote.fulfillmentSku ?? undefined,
         fishLengthIn: fishLengthIn ?? undefined,
         email: dto.email,
         giftNote,
@@ -496,8 +512,286 @@ export class OrdersService implements OnModuleDestroy {
     });
 
     if (paid && isGicleeProduct(paid.productType)) {
-      await this.enqueuePrintJob(paid.rendition);
+      if (paid.rendition.printKey) {
+        await this.maybeAutoSubmitProdigi(paid.id);
+      } else {
+        await this.enqueuePrintJob(paid.rendition);
+      }
     }
+  }
+
+  /**
+   * Called by the generator worker once print.png is uploaded.
+   * Submits eligible paid giclée orders to Prodigi.
+   */
+  async onPrintReady(renditionId: string) {
+    const orders = await this.prisma.order.findMany({
+      where: {
+        renditionId,
+        productType: { in: ['GICLEE', 'GICLEE_FRAMED'] },
+        status: { in: ['PAID', 'PRINTING'] },
+        prodigiOrderId: null,
+      },
+      select: { id: true },
+      take: 20,
+    });
+
+    const results: Array<{ orderId: string; prodigiOrderId?: string; skipped?: string }> =
+      [];
+    for (const o of orders) {
+      try {
+        const submitted = await this.maybeAutoSubmitProdigi(o.id);
+        results.push({
+          orderId: o.id,
+          prodigiOrderId: submitted?.prodigiOrderId ?? undefined,
+          skipped: submitted ? undefined : 'not-submitted',
+        });
+      } catch (err) {
+        results.push({
+          orderId: o.id,
+          skipped: err instanceof Error ? err.message : 'submit-failed',
+        });
+      }
+    }
+    return { renditionId, orders: results };
+  }
+
+  /** Operator / forced submit — ignores PRODIGI_AUTO_SUBMIT=false. */
+  async submitProdigi(orderId: string) {
+    const updated = await this.submitProdigiForOrder(orderId, { force: true });
+    return this.toOperator(updated);
+  }
+
+  private async maybeAutoSubmitProdigi(orderId: string) {
+    if (!prodigiAutoSubmitEnabled()) return null;
+    try {
+      return await this.submitProdigiForOrder(orderId, { force: false });
+    } catch (err) {
+      // Don't fail payment / print-ready paths on Prodigi outages — ops can retry.
+      const note =
+        err instanceof Error ? err.message : 'Prodigi auto-submit failed';
+      await this.prisma.order.updateMany({
+        where: { id: orderId, prodigiOrderId: null },
+        data: {
+          fulfillmentNote: `Prodigi auto-submit pending: ${note.slice(0, 400)}`,
+        },
+      });
+      return null;
+    }
+  }
+
+  private async submitProdigiForOrder(
+    orderId: string,
+    opts: { force: boolean },
+  ) {
+    if (!prodigiConfigured()) {
+      throw new ServiceUnavailableException(new ProdigiNotConfiguredError().message);
+    }
+
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        rendition: true,
+        affiliate: { select: { id: true, code: true, name: true } },
+      },
+    });
+    if (!order) throw new NotFoundException('Order not found');
+    if (!isGicleeProduct(order.productType)) {
+      throw new BadRequestException('Prodigi is only for print / framed orders');
+    }
+    if (['CANCELLED', 'REFUNDED'].includes(order.status)) {
+      throw new BadRequestException('Order is cancelled or refunded');
+    }
+    if (order.prodigiOrderId) {
+      return order;
+    }
+    if (!order.rendition.printKey) {
+      throw new BadRequestException(
+        'print.png is not ready yet — queue 300 DPI first',
+      );
+    }
+    if (
+      !order.shippingName ||
+      !order.shippingLine1 ||
+      !order.shippingCity ||
+      !order.shippingPostal ||
+      !order.shippingCountry
+    ) {
+      throw new BadRequestException(
+        'Shipping address incomplete — cannot submit to Prodigi',
+      );
+    }
+
+    const sku =
+      order.fulfillmentSku ||
+      fulfillmentSkuFor(
+        order.productType,
+        bandForLength(order.fishLengthIn ?? 18),
+      );
+    if (!sku) {
+      throw new BadRequestException('No Prodigi fulfillment SKU for this order');
+    }
+
+    // Long-lived presign so Prodigi can download the asset (max ~7d for SigV4).
+    const assetUrl = await this.storage.presignGet(
+      order.rendition.printKey,
+      60 * 60 * 24 * 7,
+    );
+
+    try {
+      const created = await createProdigiOrder({
+        merchantReference: order.id,
+        idempotencyKey: `gyotaku-${order.id}`,
+        sku,
+        assetUrl,
+        recipient: {
+          name: order.shippingName,
+          email: order.email,
+          address: {
+            line1: order.shippingLine1,
+            line2: order.shippingLine2,
+            postalOrZipCode: order.shippingPostal,
+            countryCode: order.shippingCountry,
+            townOrCity: order.shippingCity,
+            stateOrCounty: order.shippingState,
+          },
+        },
+      });
+
+      return this.prisma.order.update({
+        where: { id: order.id },
+        data: {
+          prodigiOrderId: created.id,
+          prodigiStatus: created.statusStage || 'InProgress',
+          fulfillmentSku: sku,
+          status:
+            order.status === 'PAID' || order.status === 'PRINTING'
+              ? 'PRINTING'
+              : order.status,
+          fulfillmentNote:
+            order.fulfillmentNote ||
+            `Submitted to Prodigi ${created.id}` +
+              (order.giftNote ? ` · gift note on file` : ''),
+          shippingCarrier: order.shippingCarrier || 'Prodigi',
+          shippingService: order.shippingService || undefined,
+        },
+        include: {
+          rendition: true,
+          affiliate: { select: { id: true, code: true, name: true } },
+        },
+      });
+    } catch (err) {
+      if (err instanceof ProdigiNotConfiguredError) {
+        throw new ServiceUnavailableException(err.message);
+      }
+      if (err instanceof ProdigiApiError) {
+        throw new BadRequestException(err.message);
+      }
+      if (!opts.force) throw err;
+      throw new BadRequestException(
+        err instanceof Error ? err.message : 'Prodigi submit failed',
+      );
+    }
+  }
+
+  async handleProdigiWebhook(body: unknown) {
+    if (!prodigiConfigured()) {
+      throw new ServiceUnavailableException('PRODIGI_API_KEY is not set');
+    }
+
+    const event = body as {
+      type?: string;
+      subject?: string;
+      data?: {
+        order?: {
+          id?: string;
+          status?: { stage?: string };
+          shipments?: unknown;
+          merchantReference?: string;
+        };
+        id?: string;
+        status?: { stage?: string };
+        shipments?: unknown;
+        merchantReference?: string;
+      };
+    };
+
+    const orderPayload = event.data?.order || event.data;
+    const prodigiId =
+      orderPayload?.id || event.subject || undefined;
+    const merchantRef =
+      (orderPayload && 'merchantReference' in orderPayload
+        ? orderPayload.merchantReference
+        : undefined) || undefined;
+    const stage = orderPayload?.status?.stage || null;
+    const shipment = extractProdigiShipment(orderPayload);
+
+    if (!prodigiId && !merchantRef) {
+      return { received: true, matched: false };
+    }
+
+    const order = await this.prisma.order.findFirst({
+      where: {
+        OR: [
+          ...(prodigiId ? [{ prodigiOrderId: prodigiId }] : []),
+          ...(merchantRef ? [{ id: merchantRef }] : []),
+        ],
+      },
+    });
+    if (!order) {
+      return { received: true, matched: false };
+    }
+
+    const mapped = mapProdigiStageToOrderStatus(stage);
+    const data: {
+      prodigiStatus?: string;
+      prodigiOrderId?: string;
+      trackingNumber?: string;
+      shippingCarrier?: string;
+      shippingService?: string;
+      status?: OrderStatus;
+      fulfillmentNote?: string;
+    } = {};
+
+    if (prodigiId && !order.prodigiOrderId) {
+      data.prodigiOrderId = prodigiId;
+    }
+    if (stage) data.prodigiStatus = stage;
+
+    if (shipment.trackingNumber) {
+      data.trackingNumber = shipment.trackingNumber;
+      data.shippingCarrier = shipment.carrier || order.shippingCarrier || 'Prodigi';
+      if (shipment.trackingUrl) {
+        data.shippingService = shipment.trackingUrl.slice(0, 200);
+      }
+    }
+
+    // Advance fulfillment from Prodigi lifecycle; never reopen cancelled/refunded.
+    if (!['CANCELLED', 'REFUNDED', 'SHIPPED'].includes(order.status)) {
+      if (mapped === 'SHIPPED' || shipment.status === 'Shipped') {
+        data.status = 'SHIPPED';
+      } else if (mapped === 'PRINTING' && order.status === 'PAID') {
+        data.status = 'PRINTING';
+      }
+      // Do not auto-CANCELLED from Prodigi — ops reviews refunds/cancellations.
+    }
+
+    if (Object.keys(data).length === 0) {
+      return { received: true, matched: true, orderId: order.id };
+    }
+
+    await this.prisma.order.update({
+      where: { id: order.id },
+      data,
+    });
+
+    return {
+      received: true,
+      matched: true,
+      orderId: order.id,
+      status: data.status || order.status,
+      prodigiStatus: data.prodigiStatus || stage,
+    };
   }
 
   /** Queue 300 DPI print.png generation for POD / giclée handoff. */
@@ -641,6 +935,17 @@ export class OrdersService implements OnModuleDestroy {
       throw new BadRequestException('Print raster is only for giclée orders');
     }
     if (order.rendition.printKey) {
+      if (!order.prodigiOrderId && prodigiAutoSubmitEnabled()) {
+        await this.maybeAutoSubmitProdigi(order.id);
+        const refreshed = await this.prisma.order.findUnique({
+          where: { id: order.id },
+          include: {
+            rendition: true,
+            affiliate: { select: { id: true, code: true, name: true } },
+          },
+        });
+        if (refreshed) return this.toOperator(refreshed);
+      }
       return this.toOperator(order);
     }
     await this.enqueuePrintJob(order.rendition);
@@ -734,6 +1039,7 @@ export class OrdersService implements OnModuleDestroy {
     shippingCents?: number | null;
     sku?: string | null;
     skuLabel?: string | null;
+    fulfillmentSku?: string | null;
     giftNote?: string | null;
     currency: string;
     fishLengthIn: number | null;
@@ -754,6 +1060,8 @@ export class OrdersService implements OnModuleDestroy {
     shippingLabelUrl?: string | null;
     shippingCarrier?: string | null;
     shippingService?: string | null;
+    prodigiOrderId?: string | null;
+    prodigiStatus?: string | null;
     fulfillmentNote: string | null;
     paidAt: Date | null;
     createdAt: Date;
@@ -797,6 +1105,7 @@ export class OrdersService implements OnModuleDestroy {
       shippingCents: order.shippingCents ?? 0,
       sku: order.sku ?? null,
       skuLabel: order.skuLabel ?? null,
+      fulfillmentSku: order.fulfillmentSku ?? null,
       giftNote: order.giftNote ?? null,
       currency: order.currency,
       fishLengthIn: order.fishLengthIn,
@@ -825,6 +1134,8 @@ export class OrdersService implements OnModuleDestroy {
       shippingLabelUrl: order.shippingLabelUrl ?? null,
       shippingCarrier: order.shippingCarrier ?? null,
       shippingService: order.shippingService ?? null,
+      prodigiOrderId: order.prodigiOrderId ?? null,
+      prodigiStatus: order.prodigiStatus ?? null,
       fulfillmentNote: order.fulfillmentNote,
       paidAt: order.paidAt,
       createdAt: order.createdAt,
