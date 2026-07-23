@@ -93,9 +93,9 @@ def structure_tensor_orientation(
     dx = dx / (mag + 1e-12)
     dy = dy / (mag + 1e-12)
 
-    # Extra smooth + renormalize to kill high-frequency flips
-    dx = cv2.GaussianBlur(dx.astype(np.float32), (k, k), sigma)
-    dy = cv2.GaussianBlur(dy.astype(np.float32), (k, k), sigma)
+    # Light smooth + renormalize — keep local anatomy (gill / fin / scale arcs)
+    dx = cv2.GaussianBlur(dx.astype(np.float32), (k, k), sigma * 0.85)
+    dy = cv2.GaussianBlur(dy.astype(np.float32), (k, k), sigma * 0.85)
     mag = np.sqrt(dx * dx + dy * dy)
     dx = dx / (mag + 1e-12)
     dy = dy / (mag + 1e-12)
@@ -103,10 +103,11 @@ def structure_tensor_orientation(
     # Resolve local sign flips so neighboring vectors are coherent
     dx, dy = _smooth_orientation_sign(dx, dy)
 
-    # Second, wider smooth pass after sign reconciliation — longer, calmer strokes
-    k2 = max(k, int(round(sigma * 2)) * 2 + 1)
-    dx = cv2.GaussianBlur(dx.astype(np.float32), (k2, k2), sigma * 1.5)
-    dy = cv2.GaussianBlur(dy.astype(np.float32), (k2, k2), sigma * 1.5)
+    # Narrow post-sign pass — avoid the old wide σ*1.5 blur that erased detail
+    # into silhouette-following swirls.
+    k2 = max(3, int(round(sigma)) * 2 + 1)
+    dx = cv2.GaussianBlur(dx.astype(np.float32), (k2, k2), sigma * 0.7)
+    dy = cv2.GaussianBlur(dy.astype(np.float32), (k2, k2), sigma * 0.7)
     mag = np.sqrt(dx * dx + dy * dy) + 1e-12
     dx, dy = dx / mag, dy / mag
 
@@ -117,7 +118,7 @@ def _smooth_orientation_sign(dx: np.ndarray, dy: np.ndarray) -> tuple[np.ndarray
     """Reduce π-ambiguity via a few passes of neighbor-aligned sign flips."""
     out_x = dx.copy()
     out_y = dy.copy()
-    for _ in range(4):
+    for _ in range(2):
         # Average of 4-neighbors (edge-safe via copy shifts)
         rx = (
             np.roll(out_x, 1, axis=1)

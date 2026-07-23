@@ -83,13 +83,30 @@ function styleParamsFromControls(c: StyleControls): Record<string, unknown> {
       seed_count: 2800,
       min_separation_light: 5.5,
       min_separation_dark: 1.6,
+      orientation_sigma: 3.0,
+      max_stroke_length_px: 70,
     })
   } else if (c.density === 'dense') {
     Object.assign(params, {
+      posterize_levels: 6,
+      seed_count: 7000,
+      min_separation_light: 2.8,
+      min_separation_dark: 0.85,
+      orientation_sigma: 2.0,
+      max_stroke_length_px: 45,
+      edge_pass_density: 0.65,
+      edge_pass_length_px: 32,
+    })
+  } else {
+    // Balanced — photo-faithful defaults (local anatomy, not silhouette swirls)
+    Object.assign(params, {
       posterize_levels: 5,
-      seed_count: 6500,
-      min_separation_light: 3.4,
-      min_separation_dark: 0.95,
+      seed_count: 5500,
+      orientation_sigma: 2.5,
+      max_stroke_length_px: 55,
+      edge_pass_density: 0.55,
+      edge_pass_length_px: 28,
+      edge_pass_crossgrain: 0.4,
     })
   }
 
@@ -97,14 +114,17 @@ function styleParamsFromControls(c: StyleControls): Record<string, unknown> {
     Object.assign(params, {
       jitter_amplitude: 0.55,
       dropout_threshold: 0.28,
-      edge_pass_density: 0.22,
+      edge_pass_density: 0.35,
     })
   } else if (c.ink === 'crisp') {
     Object.assign(params, {
-      jitter_amplitude: 0.15,
+      jitter_amplitude: 0.18,
       dropout_threshold: 0.08,
-      edge_pass_density: 0.45,
+      edge_pass_density: 0.65,
+      edge_pass_length_px: 32,
       matte_feather_px: 1.0,
+      orientation_sigma: 2.0,
+      max_stroke_length_px: 48,
     })
   }
 

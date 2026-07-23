@@ -1,11 +1,20 @@
 {
   "strategy": "flowfield",
   "canvas": "A3",
-  "posterize_levels": 4,
-  "seed_count": 4200,
-  "jitter_amplitude": 0.14,
+  "posterize_levels": 5,
+  "seed_count": 5500,
+  "mark_long_edge": 1536,
+  "clahe_clip": 3.2,
+  "clahe_grid": 16,
+  "orientation_sigma": 2.5,
+  "max_stroke_length_px": 55.0,
+  "max_cum_angle_rad": 0.85,
+  "min_separation_light": 3.5,
+  "min_separation_dark": 1.15,
+  "jitter_amplitude": 0.35,
   "dropout_threshold": 0.10,
-  "edge_pass_density": 0.28,
-  "max_stroke_length_px": 90.0,
-  "orientation_sigma": 5.0
+  "edge_pass_density": 0.55,
+  "edge_pass_length_px": 28.0,
+  "edge_pass_spacing": 1.0,
+  "edge_pass_crossgrain": 0.40
 }

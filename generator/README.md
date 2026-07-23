@@ -46,7 +46,7 @@ Do **not** run `gyotaku make-corpus` on this tree — that regenerates synthetic
 pytest -q
 ```
 
-Optional style params: `species` (`chinook|coho|sockeye|other`) and `side` (`left|right`) nudge mark density; salmon-aware matte scoring reduces false rejects on finned silhouettes.
+Defaults favor **photo-faithful detail** (local orientation, denser edge pass with cross-grain ticks) over silhouette swirls. Optional style params: `species` (`chinook|coho|sockeye|other`) and `side` (`left|right`) nudge mark density; salmon-aware matte scoring reduces false rejects on finned silhouettes.
 
 ## Pipeline
 

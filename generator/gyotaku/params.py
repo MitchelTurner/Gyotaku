@@ -59,7 +59,8 @@ class StyleParams:
 
     # Ingest
     process_long_edge: int = 2048
-    mark_long_edge: int = 1024  # tonal + marks at this scale (paths scaled to match)
+    # Higher mark resolution keeps scale / fin texture before stroke tracing
+    mark_long_edge: int = 1536
     min_short_edge: int = 600
 
     # Segmentation
@@ -69,23 +70,24 @@ class StyleParams:
     # Extra confidence budget for fish-like silhouettes (fins / aspect)
     salmon_matte_enabled: bool = True
 
-    # Tonal
-    clahe_clip: float = 2.5
-    clahe_grid: int = 8
-    posterize_levels: int = 4  # 3–6
-    orientation_sigma: float = 5.0
-    edge_low: int = 40
-    edge_high: int = 120
+    # Tonal — finer CLAHE + more bands so mottling / scales get distinct density
+    clahe_clip: float = 3.2
+    clahe_grid: int = 16
+    posterize_levels: int = 5  # 3–6
+    # Lower sigma = orientation follows local anatomy, not just body silhouette
+    orientation_sigma: float = 2.5
+    edge_low: int = 35
+    edge_high: int = 110
 
-    # Flowfield marks
-    seed_count: int = 4200
-    step_px: float = 1.35
-    max_stroke_length_px: float = 90.0
-    max_cum_angle_rad: float = 1.35
-    min_separation_light: float = 4.5  # white / light regions
-    min_separation_dark: float = 1.25  # near-black
-    density_gamma: float = 1.45  # seed bias toward dark
-    min_stroke_points: int = 5
+    # Flowfield marks — denser, shorter strokes resolve gill / fin / scale detail
+    seed_count: int = 5500
+    step_px: float = 1.25
+    max_stroke_length_px: float = 55.0
+    max_cum_angle_rad: float = 0.85
+    min_separation_light: float = 3.5  # white / light regions
+    min_separation_dark: float = 1.15  # near-black
+    density_gamma: float = 1.55  # seed bias toward dark
+    min_stroke_points: int = 4
 
     # Contour (secondary)
     contour_hatch_base: float = 2.5
@@ -94,16 +96,18 @@ class StyleParams:
     stipple_points: int = 8000
     stipple_lloyd_iters: int = 4
 
-    # Ink physics — keep barely perceptible
-    jitter_amplitude: float = 0.14
+    # Ink physics — slight hand tremor; edge pass carries anatomical accents
+    jitter_amplitude: float = 0.35
     jitter_scale: float = 36.0
     jitter_region_scale: float = 110.0
     dropout_threshold: float = 0.10
     dropout_scale: float = 65.0
-    contact_edge_boost: float = 0.4
-    edge_pass_spacing: float = 1.5
-    edge_pass_length_px: float = 14.0
-    edge_pass_density: float = 0.28
+    contact_edge_boost: float = 0.55
+    edge_pass_spacing: float = 1.0
+    edge_pass_length_px: float = 28.0
+    edge_pass_density: float = 0.55
+    # Fraction of edge-pass strokes drawn perpendicular to flow (scale ticks)
+    edge_pass_crossgrain: float = 0.40
 
     # Output
     douglas_peucker_epsilon_mm: float = 0.04
@@ -156,27 +160,36 @@ class StyleParams:
 PRESETS: dict[str, dict[str, Any]] = {
     "default": {},
     "dense": {
-        "posterize_levels": 5,
-        "seed_count": 6500,
-        "min_separation_light": 3.4,
-        "min_separation_dark": 0.95,
+        "posterize_levels": 6,
+        "seed_count": 7000,
+        "min_separation_light": 2.8,
+        "min_separation_dark": 0.85,
+        "orientation_sigma": 2.0,
+        "max_stroke_length_px": 45.0,
+        "edge_pass_density": 0.65,
+        "edge_pass_length_px": 32.0,
     },
     "sparse": {
         "posterize_levels": 3,
         "seed_count": 2800,
         "min_separation_light": 5.5,
         "min_separation_dark": 1.6,
+        "max_stroke_length_px": 70.0,
+        "orientation_sigma": 3.0,
     },
     "soft_ink": {
         "jitter_amplitude": 0.55,
         "dropout_threshold": 0.28,
-        "edge_pass_density": 0.22,
+        "edge_pass_density": 0.35,
     },
     "crisp": {
-        "jitter_amplitude": 0.15,
+        "jitter_amplitude": 0.18,
         "dropout_threshold": 0.08,
-        "edge_pass_density": 0.45,
+        "edge_pass_density": 0.65,
+        "edge_pass_length_px": 32.0,
         "matte_feather_px": 1.0,
+        "orientation_sigma": 2.0,
+        "max_stroke_length_px": 48.0,
     },
 }
 
@@ -206,9 +219,11 @@ def resolve_params(
         elif key == "flip_horizontal" and "flip_horizontal" not in override_keys:
             data[key] = value
 
-    # Clamp posterize
-    levels = int(data.get("posterize_levels", 4))
+    # Clamp posterize / cross-grain fraction
+    levels = int(data.get("posterize_levels", 5))
     data["posterize_levels"] = max(3, min(6, levels))
+    cg = float(data.get("edge_pass_crossgrain", 0.4))
+    data["edge_pass_crossgrain"] = max(0.0, min(1.0, cg))
     # Clamp / clear fish length
     fl = data.get("fish_length_in")
     if fl is None or fl == "":

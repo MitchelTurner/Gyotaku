@@ -140,29 +140,36 @@ def species_density_overrides(species: Optional[str]) -> dict[str, Any]:
     tag = normalize_species(species)
     if tag == "chinook":
         return {
-            "seed_count": 5200,
-            "min_separation_light": 3.9,
-            "min_separation_dark": 1.1,
-            "posterize_levels": 5,
-            "density_gamma": 1.55,
+            "seed_count": 6200,
+            "min_separation_light": 3.2,
+            "min_separation_dark": 1.05,
+            "posterize_levels": 6,
+            "density_gamma": 1.6,
+            "orientation_sigma": 2.2,
+            "edge_pass_density": 0.6,
+            "max_stroke_length_px": 50.0,
         }
     if tag == "coho":
         return {
-            "seed_count": 3800,
-            "min_separation_light": 4.8,
-            "min_separation_dark": 1.35,
-            "posterize_levels": 4,
-            "edge_pass_density": 0.24,
-            "density_gamma": 1.35,
+            "seed_count": 4800,
+            "min_separation_light": 3.8,
+            "min_separation_dark": 1.2,
+            "posterize_levels": 5,
+            "edge_pass_density": 0.5,
+            "density_gamma": 1.45,
+            "orientation_sigma": 2.5,
+            "max_stroke_length_px": 55.0,
         }
     if tag == "sockeye":
         return {
-            "seed_count": 4800,
-            "min_separation_light": 4.1,
-            "min_separation_dark": 1.15,
+            "seed_count": 5600,
+            "min_separation_light": 3.4,
+            "min_separation_dark": 1.1,
             "posterize_levels": 5,
-            "density_gamma": 1.5,
-            "edge_pass_density": 0.32,
+            "density_gamma": 1.55,
+            "edge_pass_density": 0.58,
+            "orientation_sigma": 2.3,
+            "max_stroke_length_px": 52.0,
         }
     return {}
 

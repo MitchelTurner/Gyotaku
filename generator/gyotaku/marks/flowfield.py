@@ -216,10 +216,11 @@ class FlowfieldStrategy(MarkStrategy):
                     break
                 pts.append((x, y))
                 nx, ny, tx, ty = self._rk4_step(x, y, direction, step, orientation)
-                # Angle accumulation — use a soft threshold so gentle curves survive
+                # Angle accumulation — faster decay so strokes stop on local anatomy
+                # instead of sweeping the whole body silhouette.
                 dot = max(-1.0, min(1.0, prev_tx * tx + prev_ty * ty))
                 turn = abs(math.acos(dot))
-                cum_angle = cum_angle * 0.92 + turn
+                cum_angle = cum_angle * 0.85 + turn
                 if cum_angle > max_angle:
                     break
                 length += step
@@ -258,12 +259,35 @@ class FlowfieldStrategy(MarkStrategy):
         max_len = params.edge_pass_length_px
         step = params.step_px
         sep = params.edge_pass_spacing
+        crossgrain = float(getattr(params, "edge_pass_crossgrain", 0.4))
 
         for i in pick:
             sx = float(xs[i]) + float(rng.random() - 0.5)
             sy = float(ys[i]) + float(rng.random() - 0.5)
             if grid.too_close(sx, sy, sep * 0.8):
                 continue
+
+            # Cross-grain ticks emphasize scale / fin / gill edges (orthogonal to flow)
+            if rng.random() < crossgrain:
+                ox, oy = _sample_orientation(orientation, sx, sy)
+                px, py = oy, -ox  # 90°
+                half = max_len * 0.45
+                tick = np.asarray(
+                    [
+                        (sx - px * half, sy - py * half),
+                        (sx + px * half, sy + py * half),
+                    ],
+                    dtype=np.float32,
+                )
+                # Keep tick on subject
+                if (
+                    _sample_field(matte, float(tick[0, 0]), float(tick[0, 1])) >= 0.2
+                    and _sample_field(matte, float(tick[1, 0]), float(tick[1, 1])) >= 0.2
+                ):
+                    paths.append(Path(points=tick))
+                    grid.insert_polyline(tick, stride=1)
+                    continue
+
             pts: list[tuple[float, float]] = []
             x, y = sx, sy
             length = 0.0
