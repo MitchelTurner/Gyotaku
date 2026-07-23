@@ -128,7 +128,6 @@ export function OperatorQueue() {
     setMetrics(null)
     setAffiliates([])
     setWaitlist([])
-    setAvailability(null)
   }
 
   async function handleCreateAffiliate(e: React.FormEvent) {
