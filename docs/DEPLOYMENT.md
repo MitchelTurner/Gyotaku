@@ -50,7 +50,7 @@ Required:
 | `REDIS_URL` | Redis reference |
 | `S3_*` | Same bucket credentials as the worker (R2 recommended) |
 | `STRIPE_SECRET_KEY` | Checkout |
-| `STRIPE_WEBHOOK_SECRET` | Endpoint `https://gyotaku-api.up.railway.app/webhooks/stripe` · event `checkout.session.completed` |
+| `STRIPE_WEBHOOK_SECRET` | Endpoint `https://gyotaku-api.up.railway.app/webhooks/stripe` · events: `checkout.session.completed`, `checkout.session.expired`, `charge.refunded` |
 | `PUBLIC_WEB_URL` | `https://gyotaku.up.railway.app` |
 | `OPERATOR_TOKEN` | Shared secret for `/operator` + operator APIs |
 
@@ -58,6 +58,7 @@ Recommended:
 
 | Variable | Notes |
 |---|---|
+| `STRIPE_AUTOMATIC_TAX` | `true` only after Stripe Tax is enabled in the Dashboard |
 | `AFFILIATE_DEFAULT_COMMISSION_BPS` | Default `1000` (10%) |
 | `SHIPPING_DOMESTIC_CENTS` | Flat US/CA shipping line item |
 | `PLOTTED_QUEUE_MAX_DAYS` | Auto-close plotted originals / waitlist |
@@ -150,8 +151,12 @@ If `/api/health` on the web host returns **HTML**, fix **web** `API_PROXY_TARGET
 ## Stripe
 
 1. API keys → `STRIPE_SECRET_KEY`
-2. Webhook → `https://gyotaku-api.up.railway.app/webhooks/stripe` for `checkout.session.completed`
+2. Webhook → `https://gyotaku-api.up.railway.app/webhooks/stripe` for:
+   - `checkout.session.completed`
+   - `checkout.session.expired`
+   - `charge.refunded`
 3. `PUBLIC_WEB_URL=https://gyotaku.up.railway.app`
+4. Optional tax: enable Stripe Tax in Dashboard, then `STRIPE_AUTOMATIC_TAX=true` on the API service
 
 Local forwarding:
 

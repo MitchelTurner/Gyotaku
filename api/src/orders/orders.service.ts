@@ -26,6 +26,10 @@ import {
   ShippingAddressError,
   ShippingNotConfiguredError,
 } from './shipping';
+import {
+  isFullyRefundedCharge,
+  stripeAutomaticTaxEnabled,
+} from './stripe-config';
 
 const PAID_STATUSES: OrderStatus[] = [
   'PAID',
@@ -34,6 +38,14 @@ const PAID_STATUSES: OrderStatus[] = [
   'PACKED',
   'SHIPPED',
 ];
+
+/** Pin SDK calls to the version shipped with `stripe` — avoid silent drift. */
+const STRIPE_API_VERSION: Stripe.LatestApiVersion = '2025-08-27.basil';
+
+/** General — Tangible Goods (prints / framed art). */
+const TAX_CODE_PHYSICAL = 'txcd_99999999';
+/** Shipping. */
+const TAX_CODE_SHIPPING = 'txcd_92010001';
 
 @Injectable()
 export class OrdersService implements OnModuleDestroy {
@@ -46,7 +58,9 @@ export class OrdersService implements OnModuleDestroy {
     private readonly affiliates: AffiliatesService,
   ) {
     const key = process.env.STRIPE_SECRET_KEY;
-    this.stripe = key ? new Stripe(key) : null;
+    this.stripe = key
+      ? new Stripe(key, { apiVersion: STRIPE_API_VERSION })
+      : null;
     this.redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
       maxRetriesPerRequest: null,
     });
@@ -269,12 +283,14 @@ export class OrdersService implements OnModuleDestroy {
       },
     });
 
+    const taxOn = stripeAutomaticTaxEnabled();
     const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [
       {
         quantity: 1,
         price_data: {
           currency: 'usd',
           unit_amount: quote.amountCents,
+          tax_behavior: taxOn ? 'exclusive' : undefined,
           product_data: {
             name: `${productLabel(dto.productType)} · ${quote.sku}`,
             description: [
@@ -286,6 +302,7 @@ export class OrdersService implements OnModuleDestroy {
             ]
               .filter(Boolean)
               .join(' · '),
+            tax_code: taxOn ? TAX_CODE_PHYSICAL : undefined,
           },
         },
       },
@@ -301,19 +318,22 @@ export class OrdersService implements OnModuleDestroy {
         price_data: {
           currency: 'usd',
           unit_amount: quote.shippingCents,
+          tax_behavior: taxOn ? 'exclusive' : undefined,
           product_data: {
             name: shipName,
             description:
               dto.productType === 'GICLEE_FRAMED'
                 ? 'Ready-to-hang framed print shipping within the United States and Canada'
                 : 'Rolled fine-art print shipping within the United States and Canada',
+            tax_code: taxOn ? TAX_CODE_SHIPPING : undefined,
           },
         },
       });
     }
 
-    const session = await stripe.checkout.sessions.create({
+    const sessionParams: Stripe.Checkout.SessionCreateParams = {
       mode: 'payment',
+      client_reference_id: order.id,
       customer_email: dto.email,
       success_url: `${webOrigin}/?order=success&orderId=${order.id}`,
       cancel_url: `${webOrigin}/?order=cancel&orderId=${order.id}`,
@@ -321,6 +341,8 @@ export class OrdersService implements OnModuleDestroy {
         allowed_countries: ['US', 'CA'],
       },
       phone_number_collection: { enabled: true },
+      billing_address_collection: taxOn ? 'required' : 'auto',
+      allow_promotion_codes: true,
       metadata: {
         orderId: order.id,
         renditionId: rendition.id,
@@ -336,7 +358,22 @@ export class OrdersService implements OnModuleDestroy {
             }
           : {}),
       },
+      payment_intent_data: {
+        metadata: {
+          orderId: order.id,
+          sku: quote.sku,
+          productType: dto.productType,
+        },
+      },
       line_items: lineItems,
+    };
+
+    if (taxOn) {
+      sessionParams.automatic_tax = { enabled: true };
+    }
+
+    const session = await stripe.checkout.sessions.create(sessionParams, {
+      idempotencyKey: `checkout-order-${order.id}`,
     });
 
     await this.prisma.order.update({
@@ -429,16 +466,32 @@ export class OrdersService implements OnModuleDestroy {
       );
     }
 
-    if (event.type === 'checkout.session.completed') {
-      const session = event.data.object as Stripe.Checkout.Session;
-      await this.markPaidFromCheckout(session);
+    switch (event.type) {
+      case 'checkout.session.completed': {
+        const session = event.data.object as Stripe.Checkout.Session;
+        await this.markPaidFromCheckout(session);
+        break;
+      }
+      case 'checkout.session.expired': {
+        const session = event.data.object as Stripe.Checkout.Session;
+        await this.markExpiredFromCheckout(session);
+        break;
+      }
+      case 'charge.refunded': {
+        const charge = event.data.object as Stripe.Charge;
+        await this.markRefundedFromCharge(charge);
+        break;
+      }
+      default:
+        break;
     }
 
     return { received: true };
   }
 
   private async markPaidFromCheckout(session: Stripe.Checkout.Session) {
-    const orderId = session.metadata?.orderId;
+    const orderId =
+      session.metadata?.orderId || session.client_reference_id || undefined;
     if (!orderId) return;
 
     const shippingDetails =
@@ -498,6 +551,42 @@ export class OrdersService implements OnModuleDestroy {
     if (paid && isGicleeProduct(paid.productType)) {
       await this.enqueuePrintJob(paid.rendition);
     }
+  }
+
+  /** Abandoned Checkout — only cancel orders still awaiting payment. */
+  private async markExpiredFromCheckout(session: Stripe.Checkout.Session) {
+    const orderId =
+      session.metadata?.orderId || session.client_reference_id || undefined;
+    if (!orderId) return;
+
+    await this.prisma.order.updateMany({
+      where: {
+        id: orderId,
+        status: { in: ['DRAFT', 'AWAITING_PAYMENT'] },
+      },
+      data: { status: 'CANCELLED' },
+    });
+  }
+
+  /** Full or partial refunds after capture — stop fulfillment. */
+  private async markRefundedFromCharge(charge: Stripe.Charge) {
+    const paymentIntent =
+      typeof charge.payment_intent === 'string'
+        ? charge.payment_intent
+        : charge.payment_intent?.id;
+    if (!paymentIntent) return;
+
+    if (!isFullyRefundedCharge(charge)) return;
+
+    await this.prisma.order.updateMany({
+      where: {
+        stripePaymentIntent: paymentIntent,
+        status: {
+          in: ['PAID', 'PLOTTING', 'PRINTING', 'PACKED', 'SHIPPED'],
+        },
+      },
+      data: { status: 'REFUNDED' },
+    });
   }
 
   /** Queue 300 DPI print.png generation for POD / giclée handoff. */
