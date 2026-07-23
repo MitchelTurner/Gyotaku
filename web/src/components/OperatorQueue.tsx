@@ -20,7 +20,6 @@ import {
   type OperatorMetrics,
   type OperatorOrder,
   type OperatorStatus,
-  type PlottedAvailability,
   type WaitlistEntry,
 } from '../lib/operatorApi'
 
