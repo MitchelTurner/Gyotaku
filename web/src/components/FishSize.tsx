@@ -119,11 +119,7 @@ function TapeMeasure({
         aria-valuemax={MAX}
         aria-valuenow={inches ?? undefined}
         aria-valuetext={inches != null ? formatInches(inches) : 'not set'}
-        className="relative h-20 w-full cursor-pointer touch-none select-none overflow-hidden rounded-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.55)] ring-2 ring-ink/25 outline-none focus-visible:ring-sea"
-        style={{
-          background:
-            'linear-gradient(180deg, #f3e2a8 0%, #e8c85a 45%, #d4a93a 100%)',
-        }}
+        className="relative h-20 w-full cursor-pointer touch-none select-none overflow-hidden rounded-sm bg-gradient-to-b from-foam via-paper to-mist ring-1 ring-ink/15 outline-none focus-visible:ring-2 focus-visible:ring-sea"
         onPointerDown={(e) => {
           dragging.current = true
           e.currentTarget.setPointerCapture(e.pointerId)
@@ -188,10 +184,10 @@ function TapeMeasure({
         {/* Selection marker */}
         {pct != null && (
           <span
-            className="pointer-events-none absolute top-0 bottom-0 z-10 w-1 -translate-x-1/2 bg-sea shadow-[0_0_0_2px_rgba(255,255,255,0.65)]"
+            className="pointer-events-none absolute top-0 bottom-0 z-10 w-1 -translate-x-1/2 bg-sea ring-2 ring-foam/80"
             style={{ left: `${pct}%` }}
           >
-            <span className="absolute left-1/2 top-1.5 -translate-x-1/2 whitespace-nowrap rounded-sm bg-ink px-2 py-0.5 text-[11px] font-semibold text-foam shadow-sm">
+            <span className="absolute left-1/2 top-1.5 -translate-x-1/2 whitespace-nowrap rounded-sm bg-sea px-2 py-0.5 text-[11px] font-semibold text-foam">
               {formatInches(inches!)}
             </span>
           </span>
