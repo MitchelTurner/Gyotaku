@@ -2,12 +2,14 @@
 
 Turn a salmon photo into gyotaku-style pen-plotter art — then sell a hand-plotted original or a giclée.
 
-**Live**
+**Live** (expected Railway domains)
 
 | Service | URL |
 |---|---|
 | Web app | https://gyotaku-web.up.railway.app |
 | API | https://gyotaku.up.railway.app |
+
+If you see Railway’s JSON **`Application not found`**, the domain is not linked to a running service — see [Deployment → Application not found](docs/DEPLOYMENT.md#application-not-found-railway-json-404).
 
 Guests upload a catch, preview a watermarked print, and check out through Stripe. Captains can share a QR code so charters earn a commission. Operators fulfill plots, prints, and payouts from `/operator`.
 

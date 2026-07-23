@@ -85,6 +85,53 @@ Job queues: `gyotaku:jobs` (generate / print), failures → `gyotaku:deadletter`
 
 ---
 
+## “Application not found” (Railway JSON 404)
+
+If the browser or `curl` shows:
+
+```json
+{"status":"error","code":404,"message":"Application not found"}
+```
+
+with header `x-railway-fallback: true`, **no service is bound to that domain** (or the service was deleted / never deployed). This is not an app bug.
+
+### Check which host is which
+
+```bash
+# Should be Nest JSON, e.g. {"ok":true,...} — NOT HTML
+curl -sS https://gyotaku.up.railway.app/health | head
+
+# Should be the React HTML shell — NOT "Application not found"
+curl -sS -o /dev/null -w "%{http_code} %{content_type}\n" https://gyotaku-web.up.railway.app/
+```
+
+If `gyotaku.up.railway.app/health` returns **HTML**, the API domain is pointing at the **web** service (wrong root directory or wrong domain assignment).
+
+### Fix in Railway dashboard
+
+You need **three** services:
+
+| Service | Root Directory | Public domain |
+|---|---|---|
+| **api** | `api` | `gyotaku.up.railway.app` |
+| **web** | `web` | `gyotaku-web.up.railway.app` |
+| **worker** | `generator` | optional |
+
+1. Open the project → confirm all three services exist and are **Active** (not removed / crashed).
+2. On each service → **Settings → Root Directory** as above.
+3. **Settings → Networking / Domains**
+   - Attach `gyotaku.up.railway.app` to **api** only
+   - Attach `gyotaku-web.up.railway.app` to **web** only  
+   - If a domain shows “Application not found”, generate a new domain or re-link it to the correct service
+4. **web** variables: `API_PROXY_TARGET=https://gyotaku.up.railway.app` (no `VITE_API_URL`)
+5. **api** variables: Stripe, `PUBLIC_WEB_URL=https://gyotaku-web.up.railway.app`, `OPERATOR_TOKEN`, DB/Redis/S3
+6. Redeploy **api**, then **web**, then **worker**
+7. Re-run the `curl` checks above
+
+Do **not** set the API service root to `web/` — that replaces the API with the SPA and breaks `/health` + checkout.
+
+---
+
 ## “Failed to fetch” checklist
 
 1. **api** — remove stale `CORS_ORIGINS` (especially `localhost:5173`)
