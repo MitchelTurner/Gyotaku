@@ -13,10 +13,13 @@ export type SpeciesTag =
   | null
 export type SideTag = 'left' | 'right' | 'unknown' | null
 
+export type ColorMode = 'black_and_white' | 'fish_color' | 'vibrant'
+
 export type StyleControls = {
   strategy: 'flowfield' | 'contour' | 'stipple'
   density: 'sparse' | 'default' | 'dense'
   ink: 'crisp' | 'default' | 'soft'
+  colorMode: ColorMode
   fishLengthIn: number | null
   species: SpeciesTag
   side: SideTag
@@ -170,6 +173,25 @@ export function Preview({
               key={value}
               active={controls.ink === value}
               onClick={() => onControlsChange({ ...controls, ink: value })}
+              label={label}
+            />
+          ))}
+        </ControlGroup>
+
+        <ControlGroup label="Color">
+          {(
+            [
+              ['black_and_white', 'Black & white'],
+              ['fish_color', 'Fish color'],
+              ['vibrant', 'Vibrant'],
+            ] as const
+          ).map(([value, label]) => (
+            <Choice
+              key={value}
+              active={controls.colorMode === value}
+              onClick={() =>
+                onControlsChange({ ...controls, colorMode: value })
+              }
               label={label}
             />
           ))}

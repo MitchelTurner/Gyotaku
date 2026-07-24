@@ -11,6 +11,7 @@ import json
 from dataclasses import asdict, dataclass, field, fields
 from typing import Any, Literal, Optional
 
+from gyotaku.color_mode import ColorMode, normalize_color_mode
 from gyotaku.salmon import (
     normalize_side,
     normalize_species,
@@ -56,6 +57,9 @@ class StyleParams:
     side: Optional[SideTag] = None
     # Mirror subject after matte (set automatically for side=right)
     flip_horizontal: bool = False
+
+    # Ink color: classic black, sample the fish, or push a vivid print look
+    color_mode: ColorMode = "black_and_white"
 
     # Ingest
     process_long_edge: int = 2048
@@ -185,6 +189,8 @@ class StyleParams:
             filtered["flip_horizontal"] = bool(filtered["flip_horizontal"])
         if "salmon_matte_enabled" in filtered:
             filtered["salmon_matte_enabled"] = bool(filtered["salmon_matte_enabled"])
+        if "color_mode" in filtered:
+            filtered["color_mode"] = normalize_color_mode(filtered["color_mode"])
         return cls(**filtered)
 
     @classmethod
@@ -298,4 +304,5 @@ def resolve_params(
         )
     data["species"] = normalize_species(data.get("species"))
     data["side"] = normalize_side(data.get("side"))
+    data["color_mode"] = normalize_color_mode(data.get("color_mode"))
     return StyleParams.from_dict(data)

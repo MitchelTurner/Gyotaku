@@ -68,6 +68,7 @@ function styleParamsFromControls(c: StyleControls): Record<string, unknown> {
   const params: Record<string, unknown> = {
     strategy: c.strategy,
     watermark: true,
+    color_mode: c.colorMode || 'black_and_white',
   }
 
   if (c.fishLengthIn != null && Number.isFinite(c.fishLengthIn)) {
@@ -166,9 +167,14 @@ function controlsFromStyleParams(style: Record<string, unknown>): StyleControls 
     style.side === 'left' || style.side === 'right' || style.side === 'unknown'
       ? style.side
       : null
+  const colorMode =
+    style.color_mode === 'fish_color' || style.color_mode === 'vibrant'
+      ? style.color_mode
+      : 'black_and_white'
   return {
     ...DEFAULT_CONTROLS,
     strategy,
+    colorMode,
     fishLengthIn,
     species,
     side,

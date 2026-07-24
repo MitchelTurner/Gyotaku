@@ -187,6 +187,8 @@ def generate(
     # Layout uses full-resolution subject crop size
     x0, y0, x1, y1 = seg.bbox
     layout = compute_layout(x1 - x0, y1 - y0, params)
+    # Cropped subject RGB for fish_color / vibrant ink sampling
+    subject_rgb = seg.rgb_cutout[y0:y1, x0:x1]
 
     _progress(progress, "finishing", "simplify + optimize paths")
     paths = simplify_paths(paths, params.douglas_peucker_epsilon_mm, layout.px_to_mm)
@@ -199,24 +201,32 @@ def generate(
         seed=seed,
         image_hash=ingested.image_hash,
         style_fingerprint=params.fingerprint(),
+        params=params,
+        subject_rgb=subject_rgb,
     )
     svg_path = output_dir / "artwork.svg"
     write_svg(svg_path, svg)
     digest = svg_sha256(svg)
 
     _progress(progress, "finishing", "render preview")
-    preview = render_preview_png(paths, layout, params, watermark=True)
+    preview = render_preview_png(
+        paths, layout, params, watermark=True, subject_rgb=subject_rgb
+    )
     preview_path = output_dir / "preview.png"
     write_png(preview_path, preview)
 
-    preview_clean = render_preview_png(paths, layout, params, watermark=False)
+    preview_clean = render_preview_png(
+        paths, layout, params, watermark=False, subject_rgb=subject_rgb
+    )
     preview_clean_path = output_dir / "preview_clean.png"
     write_png(preview_clean_path, preview_clean)
 
     print_path = None
     if write_print:
         _progress(progress, "finishing", "render print raster")
-        print_rgb = render_print_png(paths, layout, params)
+        print_rgb = render_print_png(
+            paths, layout, params, subject_rgb=subject_rgb
+        )
         print_path = output_dir / "print.png"
         write_png(print_path, print_rgb)
 

@@ -7,6 +7,7 @@ export const DEFAULT_CONTROLS: StyleControls = {
   strategy: 'flowfield',
   density: 'default',
   ink: 'default',
+  colorMode: 'black_and_white',
   fishLengthIn: null,
   species: null,
   side: null,
@@ -28,6 +29,10 @@ export function loadControls(): StyleControls {
           : 'default',
       ink:
         parsed.ink === 'crisp' || parsed.ink === 'soft' ? parsed.ink : 'default',
+      colorMode:
+        parsed.colorMode === 'fish_color' || parsed.colorMode === 'vibrant'
+          ? parsed.colorMode
+          : 'black_and_white',
       fishLengthIn:
         typeof parsed.fishLengthIn === 'number' && Number.isFinite(parsed.fishLengthIn)
           ? parsed.fishLengthIn
